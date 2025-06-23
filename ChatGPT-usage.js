@@ -94,6 +94,8 @@
         dailyModel: "#9F7AEA",
         // Green for weekly models (7d)
         weeklyModel: "#10B981",
+        // Pink for monthly models (30d)
+        monthlyModel: "#F472B6",
     };
 
     const STYLE = {
@@ -122,7 +124,8 @@
     const TIME_WINDOWS = {
         hour3: 3 * 60 * 60 * 1000,      // 3 hours in ms
         daily: 24 * 60 * 60 * 1000,     // 24 hours (1 day) in ms
-        weekly: 7 * 24 * 60 * 60 * 1000  // 7 days (1 week) in ms
+        weekly: 7 * 24 * 60 * 60 * 1000, // 7 days (1 week) in ms
+        monthly: 30 * 24 * 60 * 60 * 1000 // 30 days (1 month) in ms
     };
 
     // 特殊模型标识 - 从gpt-4o-mini修改为gpt-4-1-mini
@@ -211,8 +214,8 @@
             },
             "o3-pro": {
                 requests: [],
-                quota: 20, // 新增o3-pro模型，20次每周
-                windowType: "weekly" // 7-day window
+                quota: 20, // 新增o3-pro模型，20次每月
+                windowType: "monthly" // 30-day window
             },
             "gpt-4-5": {
                 requests: [],
@@ -233,7 +236,7 @@
                 "o4-mini": { quota: 300, windowType: "daily" },
                 "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 200, windowType: "weekly" },
-                "o3-pro": { quota: 20, windowType: "weekly" },
+                "o3-pro": { quota: 20, windowType: "monthly" },
                 "gpt-4-5": { quota: 25, windowType: "weekly" }
             }
         },
@@ -245,7 +248,7 @@
                 "o4-mini": { quota: 300, windowType: "daily" },
                 "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 200, windowType: "weekly" },
-                "o3-pro": { quota: 0, windowType: "weekly" }, // plus暂时还没有这个模型
+                "o3-pro": { quota: 20, windowType: "monthly" },
                 "gpt-4-5": { quota: 20, windowType: "weekly" }
             }
         },
@@ -257,7 +260,7 @@
                 "o4-mini": { quota: 10, windowType: "daily" },
                 "o4-mini-high": { quota: 0, windowType: "daily" }, // Free套餐不可用
                 "o3": { quota: 0, windowType: "weekly" },
-                "o3-pro": { quota: 0, windowType: "weekly" },
+                "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "weekly" }
             }
         },
@@ -269,7 +272,7 @@
                 "o4-mini": { quota: 0, windowType: "daily" }, // Pro无限制
                 "o4-mini-high": { quota: 0, windowType: "daily" }, // Pro无限制
                 "o3": { quota: 0, windowType: "weekly" }, // Pro无限制
-                "o3-pro": { quota: 0, windowType: "weekly" }, // Pro无限制
+                "o3-pro": { quota: 0, windowType: "monthly" }, // Pro无限制
                 "gpt-4-5": { quota: 0, windowType: "weekly" } // Pro无限制
             }
         }
@@ -538,6 +541,10 @@
 
   #chatUsageMonitor .window-badge.weekly {
       background-color: ${COLORS.weeklyModel};
+  }
+
+  #chatUsageMonitor .window-badge.monthly {
+      background-color: ${COLORS.monthlyModel};
   }
 
   #chatUsageMonitor .request-time {
@@ -872,7 +879,7 @@
                         usageData.models[modelId] = {
                             requests: [],
                             quota: 20,
-                            windowType: "weekly"
+                            windowType: "monthly"
                         };
                     }
                 }
@@ -933,7 +940,7 @@
                 }
 
                 // Ensure windowType is valid
-                if (!['hour3', 'daily', 'weekly'].includes(model.windowType)) {
+                if (!['hour3', 'daily', 'weekly', 'monthly'].includes(model.windowType)) {
                     model.windowType = 'daily'; // Default to daily
                 }
             });
@@ -1119,7 +1126,7 @@
             // 检查必需的模型字段
             if (!Array.isArray(model.requests)) return false;
             if (typeof model.quota !== 'number') return false;
-            if (!model.windowType || !['hour3', 'daily', 'weekly'].includes(model.windowType)) return false;
+            if (!model.windowType || !['hour3', 'daily', 'weekly', 'monthly'].includes(model.windowType)) return false;
         }
 
         // 基本验证通过
@@ -1650,9 +1657,14 @@
         weeklyOption.value = "weekly";
         weeklyOption.textContent = "7天窗口";
 
+        const monthlyOption = document.createElement("option");
+        monthlyOption.value = "monthly";
+        monthlyOption.textContent = "30天窗口";
+
         windowSelect.appendChild(hour3Option);
         windowSelect.appendChild(dailyOption);
         windowSelect.appendChild(weeklyOption);
+        windowSelect.appendChild(monthlyOption);
 
         // Set the current value
         windowSelect.value = model.windowType || "daily";
@@ -1722,12 +1734,15 @@
             windowBadge.textContent = "3h";
         } else if (model.windowType === "daily") {
             windowBadge.textContent = "24h";
-        } else {
+        } else if (model.windowType === "weekly") {
             windowBadge.textContent = "7d";
+        } else {
+            windowBadge.textContent = "30d";
         }
 
         windowBadge.title = `${model.windowType === "hour3" ? "3 hour" :
-                            model.windowType === "daily" ? "24 hour" : "7 day"} sliding window`;
+                            model.windowType === "daily" ? "24 hour" :
+                            model.windowType === "weekly" ? "7 day" : "30 day"} sliding window`;
 
         modelNameContainer.appendChild(windowBadge);
         row.appendChild(modelNameContainer);
@@ -2013,6 +2028,7 @@
             <span><span class="window-badge hour3">3h</span> 3小时窗口</span>
             <span><span class="window-badge daily">24h</span> 24小时窗口</span>
             <span><span class="window-badge weekly">7d</span> 7天窗口</span>
+            <span><span class="window-badge monthly">30d</span> 30天窗口</span>
         `;
 
         infoSection.appendChild(windowTypes);
@@ -2684,7 +2700,7 @@
     // Cleanup old requests that are no longer relevant for any window type
     function cleanupExpiredRequests() {
         const now = Date.now();
-        const maxWindow = TIME_WINDOWS.weekly; // Longest time window
+        const maxWindow = TIME_WINDOWS.monthly; // Longest time window
 
         Object.values(usageData.models).forEach(model => {
             // Keep only requests within the longest possible window
