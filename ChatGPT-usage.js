@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      2.2
-// @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入、导出、合并记录！
+// @version      2.7.0
+// @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）、DeepResearch监控！
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=chatgpt.com
@@ -11,6 +11,7 @@
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
 // @license      MIT
+// @run-at       document-start
 // @downloadURL https://update.greasyfork.org/scripts/533399/ChatGPT%E7%94%A8%E9%87%8F%E7%BB%9F%E8%AE%A1.user.js
 // @updateURL https://update.greasyfork.org/scripts/533399/ChatGPT%E7%94%A8%E9%87%8F%E7%BB%9F%E8%AE%A1.meta.js
 // ==/UserScript==
@@ -127,6 +128,9 @@
     // 特殊模型标识 - 从gpt-4o-mini修改为gpt-4-1-mini
     const SPECIAL_MODEL = "gpt-4-1-mini";
 
+    // DeepResearch特殊模型
+    const DEEPRESEARCH_MODEL = "DeepResearch";
+
     // Helper Functions
     const formatTimeAgo = (timestamp) => {
         const now = Date.now();
@@ -167,20 +171,27 @@
         size: { width: 400, height: 500 },
         minimized: false,
         progressType: "bar", // bar or dots (default to bar)
+        planType: "team", // 默认套餐：team, plus, free, pro
         // 为gpt-4-1-mini添加特殊计数器
         miniCount: 0,
+        // DeepResearch数据
+        deepResearch: {
+            remaining: null,
+            resetAfter: null,
+            lastUpdate: null
+        },
         // 新增：是否显示窗口刷新时间，默认关闭以保持界面简洁
         showWindowResetTime: false,
         models: {
             "gpt-4o": {
                 requests: [],
-                quota: 80, // 保持不变
+                quota: 100, // 实测修正：从80改为100
                 windowType: "hour3" // 3-hour window
             },
             // 新增正常模型，与gpt-4o有相同配额
             "gpt-4-1": {
                 requests: [],
-                quota: 80, // 与gpt-4o次数一样，3小时80次
+                quota: 100, // 实测修正：从80改为100，3小时100次
                 windowType: "hour3" // 3-hour window
             },
             "o4-mini": {
@@ -195,16 +206,73 @@
             },
             "o3": {
                 requests: [],
-                quota: 100, // 翻倍 (原来50)
+                quota: 200, // 修改为200次每周 (原来100)
+                windowType: "weekly" // 7-day window
+            },
+            "o3-pro": {
+                requests: [],
+                quota: 20, // 新增o3-pro模型，20次每周
                 windowType: "weekly" // 7-day window
             },
             "gpt-4-5": {
                 requests: [],
-                quota: 50, // 保持不变
+                quota: 25, // 修改为25次
                 windowType: "weekly" // 7-day window
             },
             // 从models对象中移除gpt-4o-mini，我们将单独处理它
         },
+    };
+
+    // 套餐配置
+    const PLAN_CONFIGS = {
+        team: {
+            name: "Team",
+            models: {
+                "gpt-4o": { quota: 100, windowType: "hour3" },
+                "gpt-4-1": { quota: 100, windowType: "hour3" },
+                "o4-mini": { quota: 300, windowType: "daily" },
+                "o4-mini-high": { quota: 100, windowType: "daily" },
+                "o3": { quota: 200, windowType: "weekly" },
+                "o3-pro": { quota: 20, windowType: "weekly" },
+                "gpt-4-5": { quota: 25, windowType: "weekly" }
+            }
+        },
+        plus: {
+            name: "Plus",
+            models: {
+                "gpt-4o": { quota: 80, windowType: "hour3" },
+                "gpt-4-1": { quota: 80, windowType: "hour3" },
+                "o4-mini": { quota: 300, windowType: "daily" },
+                "o4-mini-high": { quota: 100, windowType: "daily" },
+                "o3": { quota: 200, windowType: "weekly" },
+                "o3-pro": { quota: 0, windowType: "weekly" }, // plus暂时还没有这个模型
+                "gpt-4-5": { quota: 20, windowType: "weekly" }
+            }
+        },
+        free: {
+            name: "Free",
+            models: {
+                "gpt-4o": { quota: 10, windowType: "hour3" },
+                "gpt-4-1": { quota: 0, windowType: "hour3" }, // Free套餐不可用
+                "o4-mini": { quota: 10, windowType: "daily" },
+                "o4-mini-high": { quota: 0, windowType: "daily" }, // Free套餐不可用
+                "o3": { quota: 0, windowType: "weekly" },
+                "o3-pro": { quota: 0, windowType: "weekly" },
+                "gpt-4-5": { quota: 0, windowType: "weekly" }
+            }
+        },
+        pro: {
+            name: "Pro",
+            models: {
+                "gpt-4o": { quota: 0, windowType: "hour3" }, // Pro无限制
+                "gpt-4-1": { quota: 0, windowType: "hour3" }, // Pro无限制
+                "o4-mini": { quota: 0, windowType: "daily" }, // Pro无限制
+                "o4-mini-high": { quota: 0, windowType: "daily" }, // Pro无限制
+                "o3": { quota: 0, windowType: "weekly" }, // Pro无限制
+                "o3-pro": { quota: 0, windowType: "weekly" }, // Pro无限制
+                "gpt-4-5": { quota: 0, windowType: "weekly" } // Pro无限制
+            }
+        }
     };
 
     // Updated Styles
@@ -228,6 +296,10 @@
     resize: both;
     transition: all 0.3s ease;
     transform-origin: top left;  /* 改为左侧 */
+  }
+
+  #chatUsageMonitor.hidden {
+    display: none !important;
   }
 
   #chatUsageMonitor::after {
@@ -501,6 +573,55 @@
       font-style: italic;
   }
 
+  /* 周分析报告样式 */
+  #chatUsageMonitor .weekly-report {
+      background: ${COLORS.surface};
+      border-radius: 8px;
+      padding: ${STYLE.spacing.md};
+      margin-top: ${STYLE.spacing.md};
+  }
+
+  #chatUsageMonitor .weekly-report h3 {
+      color: ${COLORS.yellow};
+      margin-bottom: ${STYLE.spacing.sm};
+      font-size: ${STYLE.textSize.md};
+  }
+
+  #chatUsageMonitor .weekly-report .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: ${STYLE.spacing.xs} 0;
+      font-size: ${STYLE.textSize.sm};
+      border-bottom: 1px solid ${COLORS.border};
+  }
+
+  #chatUsageMonitor .weekly-report .stat-row:last-child {
+      border-bottom: none;
+  }
+
+  #chatUsageMonitor .weekly-report .stat-label {
+      color: ${COLORS.secondaryText};
+  }
+
+  #chatUsageMonitor .weekly-report .stat-value {
+      color: ${COLORS.text};
+      font-weight: 500;
+  }
+
+  #chatUsageMonitor .weekly-report .model-breakdown {
+      margin-top: ${STYLE.spacing.sm};
+  }
+
+  #chatUsageMonitor .weekly-report .model-item {
+      display: flex;
+      justify-content: space-between;
+      padding: ${STYLE.spacing.xs} ${STYLE.spacing.sm};
+      font-size: ${STYLE.textSize.xs};
+      background: ${COLORS.background};
+      border-radius: 4px;
+      margin: 2px 0;
+  }
+
   @keyframes gradientShift {
       0% { background-position: 100% 0; }
       100% { background-position: -100% 0; }
@@ -698,6 +819,11 @@
                 usageData.progressType = "bar";
             }
 
+            // 添加planType如果不存在
+            if (!usageData.planType) {
+                usageData.planType = "team";
+            }
+
             // 添加miniCount如果不存在
             if (usageData.miniCount === undefined) {
                 usageData.miniCount = 0;
@@ -706,6 +832,15 @@
             // 添加showWindowResetTime如果不存在
             if (usageData.showWindowResetTime === undefined) {
                 usageData.showWindowResetTime = false;
+            }
+
+            // 添加deepResearch如果不存在
+            if (!usageData.deepResearch) {
+                usageData.deepResearch = {
+                    remaining: null,
+                    resetAfter: null,
+                    lastUpdate: null
+                };
             }
 
             // 如果gpt-4o-mini在models中，迁移它的计数到miniCount并移除
@@ -723,17 +858,41 @@
             }
 
             // 确保添加的新模型在现有配置中也存在
-            const newModels = ["gpt-4-1"];
+            const newModels = ["gpt-4-1", "o3-pro"];
             newModels.forEach(modelId => {
                 if (!usageData.models[modelId]) {
                     console.debug(`[monitor] Adding new model "${modelId}" to configuration.`);
-                    usageData.models[modelId] = {
-                        requests: [],
-                        quota: 80,
-                        windowType: "hour3"
-                    };
+                    if (modelId === "gpt-4-1") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 100,
+                            windowType: "hour3"
+                        };
+                    } else if (modelId === "o3-pro") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 20,
+                            windowType: "weekly"
+                        };
+                    }
                 }
             });
+
+            // 更新现有o3模型的配额为200
+            if (usageData.models["o3"] && usageData.models["o3"].quota !== 200) {
+                console.debug(`[monitor] Updating o3 model quota from ${usageData.models["o3"].quota} to 200.`);
+                usageData.models["o3"].quota = 200;
+            }
+
+            // 实测修正：更新现有gpt-4o和gpt-4-1模型的配额为100
+            if (usageData.models["gpt-4o"] && usageData.models["gpt-4o"].quota !== 100) {
+                console.debug(`[monitor] Updating gpt-4o model quota from ${usageData.models["gpt-4o"].quota} to 100.`);
+                usageData.models["gpt-4o"].quota = 100;
+            }
+            if (usageData.models["gpt-4-1"] && usageData.models["gpt-4-1"].quota !== 100) {
+                console.debug(`[monitor] Updating gpt-4-1 model quota from ${usageData.models["gpt-4-1"].quota} to 100.`);
+                usageData.models["gpt-4-1"].quota = 100;
+            }
 
             // 删除gpt-4模型
             if (usageData.models["gpt-4"]) {
@@ -802,10 +961,73 @@
 
     let usageData = Storage.get();
 
+    // =============== DeepResearch 监控功能 ===============
+
+    // DeepResearch数据更新函数
+    function updateDeepResearchData(remaining, resetAfter) {
+        usageData = Storage.get();
+        usageData.deepResearch = {
+            remaining: remaining,
+            resetAfter: resetAfter,
+            lastUpdate: Date.now()
+        };
+        Storage.set(usageData);
+        updateUI();
+        console.log(`✅ [DeepResearch] 剩余次数: ${remaining}, 重置时间: ${resetAfter}`);
+    }
+
+    // DeepResearch响应数据分析
+    function analyzeResponseForDeepResearch(data, endpoint) {
+        if (!data || typeof data !== 'object') return false;
+
+        // 检查 limits_progress 字段
+        if (data.limits_progress && Array.isArray(data.limits_progress)) {
+            const deepResearch = data.limits_progress.find(
+                item => item.feature_name === 'deep_research'
+            );
+
+            if (deepResearch) {
+                console.log(`✅ 在 ${endpoint} 找到 DeepResearch 数据:`, deepResearch);
+                updateDeepResearchData(deepResearch.remaining, deepResearch.reset_after);
+                return true;
+            }
+        }
+
+        // 递归搜索包含 "deep_research" 的任何字段
+        function deepSearch(obj) {
+            if (!obj || typeof obj !== 'object') return false;
+
+            for (const [key, value] of Object.entries(obj)) {
+                // 检查键名是否包含相关信息
+                if (key.toLowerCase().includes('deep') || key.toLowerCase().includes('research')) {
+                    if (typeof value === 'object' && value !== null && value.remaining !== undefined) {
+                        console.log(`✅ 找到 DeepResearch 数据:`, value);
+                        updateDeepResearchData(value.remaining, value.reset_after || value.resetAfter);
+                        return true;
+                    }
+                }
+
+                // 递归搜索
+                if (typeof value === 'object' && value !== null) {
+                    if (deepSearch(value)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        return deepSearch(data);
+    }
+
     // 导出功能
     function exportUsageData() {
         const data = Storage.get();
-        const jsonData = JSON.stringify(data, null, 2);
+        // 创建导出数据的副本，移除DeepResearch数据（因为这是实时获取的）
+        const exportData = { ...data };
+        delete exportData.deepResearch;
+
+        const jsonData = JSON.stringify(exportData, null, 2);
         const blob = new Blob([jsonData], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
 
@@ -818,7 +1040,7 @@
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showToast("用量统计数据已导出");
+            showToast("用量统计数据已导出（不含DeepResearch实时数据）");
         }, 100);
     }
 
@@ -933,6 +1155,9 @@
             summary += `\n\n特殊模型 ${SPECIAL_MODEL} 计数: ${importedData.miniCount}`;
         }
 
+        // DeepResearch数据说明
+        summary += `\n\n注: ${DEEPRESEARCH_MODEL} 数据为实时获取，不包含在导入数据中`;
+
         return summary;
     }
 
@@ -992,6 +1217,394 @@
         }
 
         return result;
+    }
+
+    // 生成一周用量分析报告（按自然日统计）
+    function generateWeeklyReport() {
+        const now = new Date();
+        // 获取今天的开始时间（0点）
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        // 获取7天前的开始时间
+        const sevenDaysAgoStart = todayStart - 6 * TIME_WINDOWS.daily;
+
+        const report = {
+            totalRequests: 0,
+            modelBreakdown: {},
+            dailyData: [], // 最近7天的数据
+            peakDay: '',
+            averageDaily: 0,
+            generatedAt: new Date().toISOString()
+        };
+
+        // 初始化最近7天的数据（包括今天）
+        for (let i = 0; i < 7; i++) {
+            const dayStart = todayStart - (6 - i) * TIME_WINDOWS.daily;
+            const date = new Date(dayStart);
+            report.dailyData.push({
+                date: date.toLocaleDateString('zh-CN'),
+                dayOfWeek: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()],
+                models: {},
+                total: 0,
+                dayStart: dayStart,
+                dayEnd: dayStart + TIME_WINDOWS.daily - 1
+            });
+        }
+
+        // 分析每个模型（排除特殊模型）
+        Object.entries(usageData.models).forEach(([modelKey, model]) => {
+            // 只统计7天内的请求
+            const validRequests = model.requests.filter(req =>
+                req.timestamp >= sevenDaysAgoStart && req.timestamp < todayStart + TIME_WINDOWS.daily
+            );
+
+            if (validRequests.length > 0) {
+                if (!report.modelBreakdown[modelKey]) {
+                    report.modelBreakdown[modelKey] = 0;
+                }
+
+                // 按天分组统计
+                validRequests.forEach(req => {
+                    // 找到请求所属的天
+                    const dayData = report.dailyData.find(day =>
+                        req.timestamp >= day.dayStart && req.timestamp <= day.dayEnd
+                    );
+
+                    if (dayData) {
+                        dayData.total++;
+                        dayData.models[modelKey] = (dayData.models[modelKey] || 0) + 1;
+                        report.modelBreakdown[modelKey]++;
+                        report.totalRequests++;
+                    }
+                });
+            }
+        });
+
+        // 计算平均每天使用量
+        const activeDays = report.dailyData.filter(d => d.total > 0).length || 1;
+        report.averageDaily = Math.round(report.totalRequests / activeDays);
+
+        // 找出使用高峰日
+        const maxDayUsage = Math.max(...report.dailyData.map(d => d.total), 0);
+        const peakDayData = report.dailyData.find(d => d.total === maxDayUsage);
+        if (peakDayData) {
+            report.peakDay = `${peakDayData.date} ${peakDayData.dayOfWeek}`;
+        }
+
+        return report;
+    }
+
+    // 导出一周分析报告为HTML文件
+    function exportWeeklyAnalysis() {
+        const report = generateWeeklyReport();
+
+        // 生成HTML内容
+        const htmlContent = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT 一周用量分析报告 - ${new Date().toLocaleDateString('zh-CN')}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #1a1b1e;
+            color: #e5e7eb;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            color: #f59e0b;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: #2a2b2e;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #363636;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #9ca3af;
+            font-size: 14px;
+        }
+        .card .value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #f59e0b;
+        }
+        .card .subtext {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+        .chart-container {
+            background: #2a2b2e;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #363636;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .chart-container.daily {
+            height: 400px;
+        }
+        .chart-container.pie {
+            height: 350px;
+        }
+        .table-container {
+            background: #2a2b2e;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #363636;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #363636;
+        }
+        th {
+            background: #1a1b1e;
+            color: #f59e0b;
+            font-weight: 600;
+        }
+        .highlight {
+            color: #f59e0b;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #9ca3af;
+            font-size: 12px;
+        }
+        .info-text {
+            color: #9ca3af;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ChatGPT 一周用量分析报告</h1>
+        <p class="info-text">分析时间段: ${report.dailyData[0].date} 至 ${report.dailyData[6].date}</p>
+        <p class="info-text">生成时间: ${new Date().toLocaleString('zh-CN')}</p>
+
+        <div class="summary-cards">
+            <div class="card">
+                <h3>总请求数</h3>
+                <div class="value">${report.totalRequests}</div>
+                <div class="subtext">最近7天</div>
+            </div>
+            <div class="card">
+                <h3>日均使用</h3>
+                <div class="value">${report.averageDaily}</div>
+                <div class="subtext">活跃天数平均</div>
+            </div>
+            <div class="card">
+                <h3>使用高峰日</h3>
+                <div class="value" style="font-size: 20px;">${report.peakDay || 'N/A'}</div>
+            </div>
+            <div class="card">
+                <h3>活跃模型数</h3>
+                <div class="value">${Object.keys(report.modelBreakdown).length}</div>
+                <div class="subtext">有使用记录</div>
+            </div>
+        </div>
+
+        <h2>每日使用趋势</h2>
+        <div class="chart-container daily">
+            <canvas id="dailyChart"></canvas>
+        </div>
+
+        <h2>模型使用分布</h2>
+        <div class="chart-container pie">
+            <canvas id="modelChart"></canvas>
+        </div>
+
+        <h2>详细数据表</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>日期</th>
+                        <th>星期</th>
+                        <th>总请求数</th>
+                        ${Object.keys(report.modelBreakdown).map(model => `<th>${model}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${report.dailyData.map((day, index) => `
+                        <tr ${index === 6 ? 'style="background: rgba(245, 158, 11, 0.1);"' : ''}>
+                            <td>${day.date} ${index === 6 ? '<span style="color: #f59e0b;">(今天)</span>' : ''}</td>
+                            <td>${day.dayOfWeek}</td>
+                            <td class="highlight">${day.total}</td>
+                            ${Object.keys(report.modelBreakdown).map(model =>
+                                `<td>${day.models[model] || 0}</td>`
+                            ).join('')}
+                        </tr>
+                    `).join('')}
+                </tbody>
+                <tfoot>
+                    <tr style="background: #1a1b1e; font-weight: bold;">
+                        <td colspan="2">总计</td>
+                        <td class="highlight">${report.totalRequests}</td>
+                        ${Object.entries(report.modelBreakdown).map(([model, count]) =>
+                            `<td>${count}</td>`
+                        ).join('')}
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>此报告由 ChatGPT 用量统计脚本自动生成</p>
+            <p style="font-size: 11px; margin-top: 10px;">注：gpt-4-1-mini 和 DeepResearch 模型因特殊性质，未包含在此分析中</p>
+        </div>
+    </div>
+
+    <script>
+        // 配置图表默认选项
+        Chart.defaults.color = '#9ca3af';
+        Chart.defaults.borderColor = '#363636';
+
+        // 每日使用趋势图
+        const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+        new Chart(dailyCtx, {
+            type: 'line',
+            data: {
+                labels: ${JSON.stringify(report.dailyData.map((d, i) =>
+                    i === 6 ? d.date + ' (今天)' : d.date
+                ))},
+                datasets: [{
+                    label: '每日请求数',
+                    data: ${JSON.stringify(report.dailyData.map(d => d.total))},
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    tension: 0.3,
+                    fill: true,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: '#f59e0b',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: function(context) {
+                                const index = context.dataIndex;
+                                const dayData = ${JSON.stringify(report.dailyData.map(d => d.dayOfWeek))};
+                                return dayData[index];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: '#363636'
+                        },
+                        ticks: {
+                            stepSize: 1
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: '#363636'
+                        }
+                    }
+                }
+            }
+        });
+
+        // 模型使用分布饼图
+        const modelCtx = document.getElementById('modelChart').getContext('2d');
+        new Chart(modelCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ${JSON.stringify(Object.keys(report.modelBreakdown))},
+                datasets: [{
+                    data: ${JSON.stringify(Object.values(report.modelBreakdown))},
+                    backgroundColor: [
+                        '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
+                        '#9333ea', '#ec4899', '#14b8a6', '#f97316',
+                        '#06b6d4', '#84cc16', '#f43f5e', '#8b5cf6'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#1a1b1e'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            padding: 15,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(2);
+                                return label + ': ' + value + ' (' + percentage + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+        `;
+
+        // 下载HTML文件
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chatgpt-weekly-analysis-${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(a);
+        a.click();
+
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("一周用量分析报告已导出", "success");
+        }, 100);
     }
 
     // Component Functions
@@ -1128,11 +1741,24 @@
         // Usage cell
         const usageValue = document.createElement("div");
 
-        // If model is gpt-4o, show numeric quota (not a question mark)
-        if (modelKey === "gpt-4o") {
-            usageValue.innerHTML = `${count} / ${model.quota}`;
+        // 处理不同的配额显示
+        let quotaDisplay;
+        if (model.quota === 0) {
+            // 检查当前套餐类型
+            const currentPlan = usageData.planType || "team";
+            if (currentPlan === "pro") {
+                quotaDisplay = "∞"; // Pro套餐无限制
+            } else {
+                quotaDisplay = "不可用"; // 其他套餐中0配额表示不可用
+            }
         } else {
-            const quotaDisplay = model.quota > 0 ? model.quota : "∞";
+            quotaDisplay = model.quota;
+        }
+
+        // If model is gpt-4o, show numeric quota (实测修正：100次/3小时)
+        if (modelKey === "gpt-4o") {
+            usageValue.innerHTML = `${count} / ${quotaDisplay}`;
+        } else {
             usageValue.textContent = `${count} / ${quotaDisplay}`;
         }
 
@@ -1149,8 +1775,20 @@
         // Progress Bar cell
         const progressCell = document.createElement("div");
 
-        // For all models with quota
-        if (model.quota > 0) {
+        // 处理进度条显示
+        if (model.quota === 0) {
+            const currentPlan = usageData.planType || "team";
+            if (currentPlan === "pro") {
+                progressCell.textContent = "无限制";
+                progressCell.style.color = COLORS.success;
+                progressCell.style.fontStyle = "italic";
+            } else {
+                progressCell.textContent = "不可用";
+                progressCell.style.color = COLORS.disabled;
+                progressCell.style.fontStyle = "italic";
+            }
+        } else {
+            // For models with quota > 0
             const usagePercent = count / model.quota;
 
             if (usageData.progressType === "dots") {
@@ -1196,8 +1834,6 @@
                 progressContainer.appendChild(progressBar);
                 progressCell.appendChild(progressContainer);
             }
-        } else {
-            progressCell.style.width = `100%`;
         }
 
         row.appendChild(progressCell);
@@ -1237,6 +1873,91 @@
         row.appendChild(progressCell);
 
         return row;
+    }
+
+    // 创建DeepResearch模型行
+    function createDeepResearchModelRow() {
+        const row = document.createElement("div");
+        row.className = "model-row";
+
+        // Model Name cell
+        const modelNameContainer = document.createElement("div");
+        const modelName = document.createElement("span");
+        modelName.textContent = DEEPRESEARCH_MODEL;
+        modelName.style.color = COLORS.text; // 使用正常模型的颜色，不是特殊模型样式
+        modelNameContainer.appendChild(modelName);
+        row.appendChild(modelNameContainer);
+
+        // Last Request Cell
+        const lastUpdateValue = document.createElement("div");
+        lastUpdateValue.className = "request-time";
+        lastUpdateValue.textContent = "-";
+        row.appendChild(lastUpdateValue);
+
+        // Usage cell (显示剩余次数)
+        const usageValue = document.createElement("div");
+        if (usageData.deepResearch.remaining !== null) {
+            usageValue.textContent = `剩余: ${usageData.deepResearch.remaining}`;
+        } else {
+            usageValue.textContent = "未知";
+            usageValue.style.color = COLORS.secondaryText;
+        }
+        row.appendChild(usageValue);
+
+        // Reset Time cell (显示重置时间)
+        const resetTimeCell = document.createElement("div");
+        resetTimeCell.style.fontSize = STYLE.textSize.xs;
+        if (usageData.deepResearch.resetAfter) {
+            try {
+                const resetDate = new Date(usageData.deepResearch.resetAfter);
+                const now = new Date();
+                const isToday = resetDate.toDateString() === now.toDateString();
+
+                if (isToday) {
+                    resetTimeCell.textContent = `今日 ${resetDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+                } else {
+                    resetTimeCell.textContent = resetDate.toLocaleDateString('zh-CN', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
+                resetTimeCell.style.color = COLORS.secondaryText;
+            } catch (e) {
+                resetTimeCell.textContent = "重置时间未知";
+                resetTimeCell.style.color = COLORS.disabled;
+            }
+        } else {
+            resetTimeCell.textContent = "重置时间未知";
+            resetTimeCell.style.color = COLORS.disabled;
+        }
+        row.appendChild(resetTimeCell);
+
+        return row;
+    }
+
+    // 应用套餐配置
+    function applyPlanConfig(planType) {
+        const planConfig = PLAN_CONFIGS[planType];
+        if (!planConfig) {
+            console.warn(`[monitor] Unknown plan type: ${planType}`);
+            return;
+        }
+
+        console.log(`[monitor] Applying ${planConfig.name} plan configuration`);
+
+        // 更新所有模型的配额和时间窗口
+        Object.entries(planConfig.models).forEach(([modelKey, config]) => {
+            if (usageData.models[modelKey]) {
+                usageData.models[modelKey].quota = config.quota;
+                usageData.models[modelKey].windowType = config.windowType;
+            }
+        });
+
+        // 保存更新后的数据
+        Storage.set(usageData);
+        console.log(`[monitor] Successfully applied ${planConfig.name} plan`);
     }
 
     // Event Handlers
@@ -1327,6 +2048,7 @@
 
         // Calculate active counts for all models
         const now = Date.now();
+        const currentPlan = usageData.planType || "team";
         const modelCounts = Object.entries(usageData.models).map(([key, model]) => {
             const windowDuration = TIME_WINDOWS[model.windowType];
             const activeCount = model.requests.filter(req =>
@@ -1336,13 +2058,15 @@
             // 检查模型是否曾经被使用过
             const hasBeenUsed = model.requests.length > 0;
 
-            return { key, model, activeCount, hasBeenUsed };
+            // 检查模型是否可用（Pro套餐中quota=0表示无限制，其他套餐中quota=0表示不可用）
+            const isAvailable = model.quota > 0 || (model.quota === 0 && currentPlan === "pro");
+
+            return { key, model, activeCount, hasBeenUsed, isAvailable };
         });
 
-        // 只在使用量页面过滤掉未使用过的模型 (在设置页面仍然显示所有模型)
-        // 按使用量排序所有已使用过的模型
+        // 在使用量页面只显示：1) 曾经被使用过的模型，或 2) 可用的模型
         const usedModels = modelCounts
-            .filter(({ hasBeenUsed }) => hasBeenUsed)
+            .filter(({ hasBeenUsed, isAvailable }) => hasBeenUsed || isAvailable)
             .sort((a, b) => sortDescending ? b.activeCount - a.activeCount : a.activeCount - b.activeCount);
 
         // 单独存储模型
@@ -1371,7 +2095,24 @@
             container.appendChild(specialRow);
         }
 
-        if (sortedModels.length === 0 && usageData.miniCount === 0) {
+        // 检查是否已经有模型显示（常规模型或特殊模型）
+        const hasAnyModels = hasRegularModels || usageData.miniCount > 0;
+
+        // 添加DeepResearch模型行（总是显示在最底部）
+        if (usageData.deepResearch.remaining !== null || hasAnyModels) {
+            // 如果前面有模型，添加一个小间距
+            if (hasAnyModels) {
+                const spacer = document.createElement("div");
+                spacer.style.height = "8px";
+                container.appendChild(spacer);
+            }
+
+            // 添加DeepResearch模型行
+            const deepResearchRow = createDeepResearchModelRow();
+            container.appendChild(deepResearchRow);
+        }
+
+        if (sortedModels.length === 0 && usageData.miniCount === 0 && usageData.deepResearch.remaining === null) {
             const emptyState = document.createElement("div");
             emptyState.style.textAlign = "center";
             emptyState.style.color = COLORS.secondaryText;
@@ -1456,6 +2197,34 @@
         `;
 
         container.appendChild(specialModelInfo);
+
+        // DeepResearch信息显示
+        const deepResearchInfo = document.createElement("div");
+        deepResearchInfo.style.marginTop = "10px";
+        deepResearchInfo.style.padding = "10px";
+        deepResearchInfo.style.border = `1px dashed ${COLORS.border}`;
+        deepResearchInfo.style.borderRadius = "4px";
+
+        const drRemaining = usageData.deepResearch.remaining !== null ? usageData.deepResearch.remaining : "未知";
+        const drResetTime = usageData.deepResearch.resetAfter ?
+            new Date(usageData.deepResearch.resetAfter).toLocaleString('zh-CN') : "未知";
+
+        deepResearchInfo.innerHTML = `
+            <div style="margin-bottom: 8px; color: ${COLORS.text};">
+                <span style="color: ${COLORS.text};">${DEEPRESEARCH_MODEL}</span> 模型状态:
+            </div>
+            <div style="margin-bottom: 6px; font-size: ${STYLE.textSize.sm};">
+                剩余次数: <span style="color: ${COLORS.yellow};">${drRemaining}</span>
+            </div>
+            <div style="margin-bottom: 6px; font-size: ${STYLE.textSize.sm};">
+                重置时间: <span style="color: ${COLORS.secondaryText};">${drResetTime}</span>
+            </div>
+            <div style="font-size: ${STYLE.textSize.xs}; color: ${COLORS.secondaryText};">
+                注: 此模型数据通过API自动获取，无法手动配置
+            </div>
+        `;
+
+        container.appendChild(deepResearchInfo);
 
         // 添加重置gpt-4-1-mini计数的事件处理
         setTimeout(() => {
@@ -1576,6 +2345,20 @@
         });
         container.appendChild(resetAllBtn);
 
+        // 添加一周用量分析按钮
+        const weeklyAnalysisBtn = document.createElement("button");
+        weeklyAnalysisBtn.className = "btn";
+        weeklyAnalysisBtn.textContent = "导出一周分析";
+        weeklyAnalysisBtn.style.marginTop = "20px";
+        weeklyAnalysisBtn.style.display = "block";
+        weeklyAnalysisBtn.style.width = "100%";
+        weeklyAnalysisBtn.style.backgroundColor = COLORS.surface;
+        weeklyAnalysisBtn.style.border = `1px solid ${COLORS.yellow}`;
+        weeklyAnalysisBtn.addEventListener("click", () => {
+            exportWeeklyAnalysis();
+        });
+        container.appendChild(weeklyAnalysisBtn);
+
         // 添加导入/导出按钮
         const dataOperationsContainer = document.createElement("div");
         dataOperationsContainer.style.marginTop = "20px";
@@ -1612,6 +2395,122 @@
         dataOperationsInfo.style.fontSize = STYLE.textSize.xs;
         dataOperationsInfo.textContent = "导入/导出功能可在不同浏览器间同步用量统计数据";
         container.appendChild(dataOperationsInfo);
+
+        // 套餐选择器
+        const planSelectorContainer = document.createElement("div");
+        planSelectorContainer.style.marginTop = STYLE.spacing.md;
+        planSelectorContainer.style.display = "flex";
+        planSelectorContainer.style.flexDirection = "column";
+        planSelectorContainer.style.gap = "12px";
+        planSelectorContainer.style.padding = "10px";
+        planSelectorContainer.style.border = `1px solid ${COLORS.border}`;
+        planSelectorContainer.style.borderRadius = "8px";
+        planSelectorContainer.style.backgroundColor = COLORS.surface;
+
+        // 套餐选择标题
+        const planTitle = document.createElement("div");
+        planTitle.textContent = "套餐设置";
+        planTitle.style.fontWeight = "bold";
+        planTitle.style.marginBottom = "8px";
+        planTitle.style.color = COLORS.white;
+        planSelectorContainer.appendChild(planTitle);
+
+        // 套餐选择器
+        const planSelectContainer = document.createElement("div");
+        planSelectContainer.style.display = "flex";
+        planSelectContainer.style.alignItems = "center";
+        planSelectContainer.style.justifyContent = "space-between";
+        planSelectContainer.style.width = "100%";
+
+        const planTypeLabel = document.createElement("span");
+        planTypeLabel.textContent = "当前套餐:";
+        planTypeLabel.style.color = COLORS.secondaryText;
+        planSelectContainer.appendChild(planTypeLabel);
+
+        const planTypeSelect = document.createElement("select");
+        planTypeSelect.style.width = "140px";
+        planTypeSelect.style.backgroundColor = COLORS.background;
+        planTypeSelect.style.color = COLORS.white;
+        planTypeSelect.style.border = `1px solid ${COLORS.border}`;
+        planTypeSelect.style.borderRadius = "4px";
+        planTypeSelect.style.padding = "4px 8px";
+
+        // 添加套餐选项
+        Object.entries(PLAN_CONFIGS).forEach(([key, config]) => {
+            const option = document.createElement("option");
+            option.value = key;
+            option.textContent = config.name;
+            planTypeSelect.appendChild(option);
+        });
+
+        planTypeSelect.value = usageData.planType || "team";
+        planTypeSelect.addEventListener('change', () => {
+            const newPlan = planTypeSelect.value;
+            if (confirm(`确定要切换到 ${PLAN_CONFIGS[newPlan].name} 套餐吗？\n\n这将更新所有模型的配额和时间窗口设置。`)) {
+                usageData.planType = newPlan;
+                applyPlanConfig(newPlan);
+                // 完全重新渲染所有内容
+                updateUI();
+                showToast(`已切换到 ${PLAN_CONFIGS[newPlan].name} 套餐`, "success");
+            } else {
+                // 用户取消，恢复原选择
+                planTypeSelect.value = usageData.planType || "team";
+            }
+        });
+
+        planSelectContainer.appendChild(planTypeSelect);
+        planSelectorContainer.appendChild(planSelectContainer);
+
+        // 套餐说明
+        const planInfo = document.createElement("div");
+        planInfo.style.fontSize = STYLE.textSize.xs;
+        planInfo.style.color = COLORS.secondaryText;
+        planInfo.style.marginTop = "4px";
+        planInfo.textContent = "切换套餐将根据官方限制自动调整所有模型的配额和时间窗口";
+        planSelectorContainer.appendChild(planInfo);
+
+        // 当前套餐配置详情
+        const currentPlanConfig = PLAN_CONFIGS[usageData.planType || "team"];
+        const planDetailsContainer = document.createElement("div");
+        planDetailsContainer.style.marginTop = "8px";
+        planDetailsContainer.style.padding = "8px";
+        planDetailsContainer.style.backgroundColor = COLORS.background;
+        planDetailsContainer.style.borderRadius = "4px";
+        planDetailsContainer.style.border = `1px solid ${COLORS.border}`;
+
+        const planDetailsTitle = document.createElement("div");
+        planDetailsTitle.textContent = `${currentPlanConfig.name} 套餐配置:`;
+        planDetailsTitle.style.fontWeight = "bold";
+        planDetailsTitle.style.marginBottom = "6px";
+        planDetailsTitle.style.fontSize = STYLE.textSize.xs;
+        planDetailsTitle.style.color = COLORS.yellow;
+        planDetailsContainer.appendChild(planDetailsTitle);
+
+        const planDetailsList = document.createElement("div");
+        planDetailsList.style.fontSize = STYLE.textSize.xs;
+        planDetailsList.style.color = COLORS.secondaryText;
+        planDetailsList.style.lineHeight = "1.4";
+
+        const detailsText = Object.entries(currentPlanConfig.models)
+            .map(([model, config]) => {
+                const windowText = config.windowType === "hour3" ? "3小时" :
+                                 config.windowType === "daily" ? "24小时" : "7天";
+                let quotaText;
+                if (config.quota === 0) {
+                    quotaText = (usageData.planType || "team") === "pro" ? "无限制" : "不可用";
+                } else {
+                    quotaText = `${config.quota}次`;
+                }
+                return `• ${model}: ${quotaText}/${windowText}`;
+            }).join('\n');
+
+        planDetailsList.textContent = detailsText + '\n• gpt-4-1-mini: 无限制/计数';
+        planDetailsList.style.whiteSpace = "pre-line";
+        planDetailsContainer.appendChild(planDetailsList);
+
+        planSelectorContainer.appendChild(planDetailsContainer);
+
+        container.appendChild(planSelectorContainer);
 
         // Progress type selector & additional options
         const optionsContainer = document.createElement("div");
@@ -1738,6 +2637,15 @@
 
     // Model Usage Tracking
     function recordModelUsage(modelId) {
+        // 模型重定向逻辑
+        if (modelId === "auto") {
+            console.debug(`[monitor] Redirecting model "${modelId}" to "gpt-4o"`);
+            modelId = "gpt-4o";
+        } else if (modelId === "gpt-4o-mini") {
+            console.debug(`[monitor] Redirecting model "${modelId}" to "${SPECIAL_MODEL}"`);
+            modelId = SPECIAL_MODEL;
+        }
+
         // Get fresh data
         usageData = Storage.get();
 
@@ -1929,6 +2837,57 @@
         }
     }
 
+    // 添加快捷键支持
+    function setupKeyboardShortcuts() {
+        // 使用多种方式确保快捷键能工作
+        const handleShortcut = (e) => {
+            // Ctrl/Cmd + I 切换最小化/展开状态
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                const monitor = document.getElementById('chatUsageMonitor');
+                if (monitor) {
+                    if (monitor.classList.contains('minimized')) {
+                        // 展开监视器
+                        monitor.classList.remove('minimized');
+
+                        // 恢复保存的尺寸
+                        const currentData = Storage.get();
+                        if (currentData.size.width && currentData.size.height) {
+                            monitor.style.width = `${currentData.size.width}px`;
+                            monitor.style.height = `${currentData.size.height}px`;
+                        }
+
+                        // 更新状态
+                        Storage.update(data => {
+                            data.minimized = false;
+                        });
+                    } else {
+                        // 最小化监视器
+                        monitor.classList.add('minimized');
+
+                        // 更新状态
+                        Storage.update(data => {
+                            data.minimized = true;
+                        });
+                    }
+                }
+
+                return false;
+            }
+        };
+
+        // 在捕获阶段监听，优先级更高
+        document.addEventListener('keydown', handleShortcut, true);
+        // 也在冒泡阶段监听，以防万一
+        document.addEventListener('keydown', handleShortcut, false);
+
+        // 直接在window上也监听
+        window.addEventListener('keydown', handleShortcut, true);
+    }
+
     // UI Creation
     function createMonitorUI() {
         if (document.getElementById("chatUsageMonitor")) return;
@@ -2079,7 +3038,11 @@
             try {
                 const [requestInfo, requestInit] = args;
                 const fetchUrl = typeof requestInfo === "string" ? requestInfo : requestInfo?.href;
+                const requestMethod = typeof requestInfo === "object" && requestInfo.method
+                    ? requestInfo.method
+                    : requestInit?.method || "GET";
 
+                // 检查是否是对话请求（模型使用统计）
                 if (requestInit?.method === "POST" && fetchUrl?.endsWith("/conversation")) {
                     const bodyText = requestInit.body;
                     const bodyObj = JSON.parse(bodyText);
@@ -2089,6 +3052,49 @@
                         recordModelUsage(bodyObj.model);
                     }
                 }
+
+                // 检查是否是DeepResearch相关的API
+                const deepResearchApis = [
+                    { url: "/backend-api/conversation/init", method: "POST" },
+                    { url: "/backend-api/accounts/check", method: "GET" },
+                    { url: "/backend-api/me", method: "GET" },
+                    { url: "/backend-api/models", method: "GET" }
+                ];
+
+                const shouldInterceptDeepResearch = deepResearchApis.some(api =>
+                    fetchUrl?.includes(api.url) &&
+                    requestMethod.toUpperCase() === api.method
+                );
+
+                if (shouldInterceptDeepResearch && response.ok) {
+                    let responseBodyText;
+                    try {
+                        responseBodyText = await response.text();
+                        const data = JSON.parse(responseBodyText);
+
+                        // 分析DeepResearch数据
+                        analyzeResponseForDeepResearch(data, fetchUrl);
+
+                        // 返回新的 Response 对象
+                        return new Response(responseBodyText, {
+                            status: response.status,
+                            statusText: response.statusText,
+                            headers: response.headers,
+                        });
+
+                    } catch (error) {
+                        console.warn(`[monitor] Failed to process DeepResearch data from ${fetchUrl}:`, error);
+
+                        if (typeof responseBodyText === "string") {
+                            return new Response(responseBodyText, {
+                                status: response.status,
+                                statusText: response.statusText,
+                                headers: response.headers,
+                            });
+                        }
+                    }
+                }
+
             } catch (error) {
                 console.warn("[monitor] Failed to process request:", error);
             }
@@ -2100,7 +3106,22 @@
     // Initialize
     function initialize() {
         cleanupExpiredRequests();
+
+        // 确保套餐配置是最新的
+        const currentPlan = usageData.planType || "team";
+        const planConfig = PLAN_CONFIGS[currentPlan];
+        if (planConfig) {
+            // 检查是否需要应用配置（简单检查第一个模型的配额是否匹配）
+            const firstModelKey = Object.keys(planConfig.models)[0];
+            if (usageData.models[firstModelKey] &&
+                usageData.models[firstModelKey].quota !== planConfig.models[firstModelKey].quota) {
+                console.log(`[monitor] Plan configuration outdated, applying ${planConfig.name} config`);
+                applyPlanConfig(currentPlan);
+            }
+        }
+
         createMonitorUI();
+        setupKeyboardShortcuts(); // 添加快捷键支持
     }
 
     // Setup observers and event listeners
@@ -2127,4 +3148,6 @@
 
     // Initialize immediately
     setTimeout(initialize, 300);
+
+    console.log("🚀 ChatGPT Usage Monitor with DeepResearch tracking loaded");
 })();
