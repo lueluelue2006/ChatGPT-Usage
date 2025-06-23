@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      2.7.0
+// @version      2.7.1
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）、DeepResearch监控！
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -2509,8 +2509,12 @@
 
         const detailsText = Object.entries(currentPlanConfig.models)
             .map(([model, config]) => {
-                const windowText = config.windowType === "hour3" ? "3小时" :
-                                 config.windowType === "daily" ? "24小时" : "7天";
+                const windowText =
+                    config.windowType === "hour3"   ? "3小时"  :
+                    config.windowType === "daily"   ? "24小时" :
+                    config.windowType === "weekly"  ? "7天"    :
+                    config.windowType === "monthly" ? "30天"   :
+                                                   "";
                 let quotaText;
                 if (config.quota === 0) {
                     quotaText = (usageData.planType || "team") === "pro" ? "无限制" : "不可用";
