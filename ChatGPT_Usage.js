@@ -12,8 +12,8 @@
 // @grant        GM_registerMenuCommand
 // @license      MIT
 // @run-at       document-start
-// @downloadURL  https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage/ChatGPT_Usage.js
-// @updateURL    https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage/ChatGPT_Usage.js
+// @downloadURL  https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage.js
+// @updateURL    https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage.js
 // ==/UserScript==
 
 (function () {
