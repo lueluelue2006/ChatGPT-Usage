@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.8.1
+// @version      3.8.2
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -314,8 +314,6 @@
                 "o4-mini": { quota: 300, windowType: "daily" },
                 "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
-                // o3-pro 配置：Team/EDU/Enterprise 为 20次/月
-                "o3-pro": { quota: 20, windowType: "monthly" },
                 // gpt-4-5：Team套餐 5次/周
                 "gpt-4-5": { quota: 5, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
@@ -380,7 +378,6 @@
                 "o4-mini": { quota: 300, windowType: "daily" },
                 "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
-                "o3-pro": { quota: 20, windowType: "monthly" },
                 "gpt-4-5": { quota: 5, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
             }
@@ -401,7 +398,6 @@
                 "o4-mini": { quota: 300, windowType: "daily" },
                 "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
-                "o3-pro": { quota: 20, windowType: "monthly" },
                 "gpt-4-5": { quota: 5, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
             }
@@ -1403,13 +1399,16 @@
         }
 
         // 按固定顺序分析每个模型（排除特殊模型）
+        const currentPlanForWeekly = (usageData && usageData.planType) || 'team';
         const sortedModelEntries = MODEL_DISPLAY_ORDER
             .filter(modelKey => usageData.models[modelKey])
+            .filter(modelKey => !(modelKey === 'o3-pro' && currentPlanForWeekly !== 'pro'))
             .map(modelKey => [modelKey, usageData.models[modelKey]]);
 
         // 添加不在固定顺序中的其他模型（如果有的话）
         Object.entries(usageData.models).forEach(([modelKey, model]) => {
             if (!MODEL_DISPLAY_ORDER.includes(modelKey)) {
+                if (modelKey === 'o3-pro' && currentPlanForWeekly !== 'pro') return;
                 sortedModelEntries.push([modelKey, model]);
             }
         });
@@ -1486,13 +1485,16 @@
         }
 
         // 按固定顺序分析每个模型（排除特殊模型）
+        const currentPlanForMonthly = (usageData && usageData.planType) || 'team';
         const sortedModelEntries = MODEL_DISPLAY_ORDER
             .filter(modelKey => usageData.models[modelKey])
+            .filter(modelKey => !(modelKey === 'o3-pro' && currentPlanForMonthly !== 'pro'))
             .map(modelKey => [modelKey, usageData.models[modelKey]]);
 
         // 添加不在固定顺序中的其他模型（如果有的话）
         Object.entries(usageData.models).forEach(([modelKey, model]) => {
             if (!MODEL_DISPLAY_ORDER.includes(modelKey)) {
+                if (modelKey === 'o3-pro' && currentPlanForMonthly !== 'pro') return;
                 sortedModelEntries.push([modelKey, model]);
             }
         });
@@ -2760,6 +2762,8 @@
                 // 显示所有存在于模型配置中的模型（不管是否在当前套餐中）
                 const modelData = modelCounts.find(({ key }) => key === modelKey);
                 if (!modelData) return false;
+                // 非 Pro 套餐隐藏 o3-pro（不计入使用列表与统计）
+                if (modelKey === 'o3-pro' && planType !== 'pro') return false;
                 
                 const { hasBeenUsed, isAvailable } = modelData;
                 return hasBeenUsed || isAvailable;
@@ -4311,5 +4315,5 @@
     scheduleInitialize(300);
 
     console.log("🚀 ChatGPT Usage Monitor loaded");
-    // v3.8.1
+    // v3.8.2
 })();
