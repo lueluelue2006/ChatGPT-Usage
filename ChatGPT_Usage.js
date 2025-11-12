@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.8.2
+// @version      3.8.4
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -12,8 +12,8 @@
 // @grant        GM_registerMenuCommand
 // @license      MIT
 // @run-at       document-start
-// @downloadURL  https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage.js
-// @updateURL    https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage.js
+// @downloadURL  https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage/ChatGPT_Usage.js
+// @updateURL    https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage/ChatGPT_Usage.js
 // ==/UserScript==
 
 (function () {
@@ -186,17 +186,27 @@
     };
     // Model ID redirection
     function resolveRedirectedModelId(originalModelId) {
+        // 将超长的 Alpha 模型ID映射为易读的短名（仅用于统计/显示）
+        if (originalModelId === 'chatgpt_alpha_model_external_access_reserved_gate_13') {
+            console.debug('[monitor] Redirecting long alpha id -> alpha');
+            return 'alpha';
+        }
         // auto 等价于 gpt-5（需要走思考检测）
         if (originalModelId === 'auto') {
             console.debug('[monitor] Redirecting model auto -> gpt-5');
             return 'gpt-5';
         }
-        // 在 team/plus/free 套餐下，gpt-4-5 重定向到 gpt-5（由 gpt-5 逻辑决定是否计为 thinking）
+        // 在 team/plus/free 套餐下，gpt-4-5 重定向到 gpt-5-1（沿用 instant 逻辑，不计入 thinking）
         try {
             const plan = (usageData && usageData.planType) || 'team';
             if ((plan === 'team' || plan === 'plus' || plan === 'free') && originalModelId === 'gpt-4-5') {
-                console.debug('[monitor] Redirecting model gpt-4-5 -> gpt-5 for plan', plan);
-                return 'gpt-5-instant';
+                console.debug('[monitor] Redirecting model gpt-4-5 -> gpt-5-1 for plan', plan);
+                return 'gpt-5-1-instant';
+            }
+            // 非 Pro 套餐下，o3-pro 重定向到 gpt-5-1（instant，不计思考）
+            if (plan !== 'pro' && originalModelId === 'o3-pro') {
+                console.debug('[monitor] Redirecting model o3-pro -> gpt-5-1 for plan', plan);
+                return 'gpt-5-1-instant';
             }
         } catch (e) { /* noop */ }
         return originalModelId;
@@ -229,6 +239,16 @@
             sourceEndpoint: null
         },
         models: {
+            "gpt-5-1": {
+                requests: [],
+                quota: 10000, // Team套餐：无限制
+                windowType: "hour3" // 3-hour window
+            },
+            "gpt-5-1-thinking": {
+                requests: [],
+                quota: 3000, // Team套餐：3000次/周
+                windowType: "weekly" // 7-day window
+            },
             "gpt-5": {
                 requests: [],
                 quota: 10000, // Team套餐：无限制
@@ -268,11 +288,6 @@
                 requests: [],
                 quota: 100, // Team套餐：100次/周
                 windowType: "weekly" // 7-day window
-            },
-            "gpt-4-5": {
-                requests: [],
-                quota: 5, // Team套餐：5次/周
-                windowType: "weekly" // 7-day window
             }
         },
     };
@@ -280,9 +295,6 @@
     // 模型固定显示顺序
     const MODEL_DISPLAY_ORDER = [
         "gpt-5-pro",
-        "gpt-5-thinking",
-        "gpt-5-t-mini",
-        "gpt-5",
         "o3-pro",
         "gpt-4-5",
         "o3",
@@ -290,6 +302,12 @@
         "o4-mini",
         "gpt-4o",
         "gpt-4-1",
+        // 其他模型（示例：alpha）
+        "alpha",
+        // 置底顺序：thinking -> t-mini -> base -> mini
+        "gpt-5-1-thinking",
+        "gpt-5-t-mini",
+        "gpt-5-1",
         "gpt-5-mini"
     ];
 
@@ -305,6 +323,8 @@
                 // 移除共用额度组，恢复独立配额
             },
             models: {
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // unlimited
+                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
                 "gpt-5": { quota: 10000, windowType: "hour3" }, // unlimited
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 10000次/3小时
@@ -314,8 +334,6 @@
                 "o4-mini": { quota: 300, windowType: "daily" },
                 "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
-                // gpt-4-5：Team套餐 5次/周
-                "gpt-4-5": { quota: 5, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
             }
         },
@@ -326,6 +344,8 @@
                 // 移除共用额度组，恢复独立配额
             },
             models: {
+                "gpt-5-1": { quota: 160, windowType: "hour3" },
+                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
                 "gpt-5": { quota: 160, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 10000次/3小时
@@ -341,8 +361,10 @@
             name: "Free",
             sharedQuotaGroups: {},
             models: {
+                "gpt-5-1": { quota: 10, windowType: "hour5" },
                 "gpt-5": { quota: 10, windowType: "hour5" },
                 // thinking: 5小时 1次
+                "gpt-5-1-thinking": { quota: 1, windowType: "hour5" },
                 "gpt-5-thinking": { quota: 1, windowType: "hour5" },
                 // thinking-mini: 每天 10 次
                 "gpt-5-t-mini": { quota: 10, windowType: "daily" },
@@ -354,8 +376,10 @@
             name: "Go",
             sharedQuotaGroups: {},
             models: {
+                "gpt-5-1": { quota: 100, windowType: "hour5" },
                 "gpt-5": { quota: 100, windowType: "hour5" },
                 // thinking: 5小时 10次
+                "gpt-5-1-thinking": { quota: 10, windowType: "hour5" },
                 "gpt-5-thinking": { quota: 10, windowType: "hour5" },
                 // thinking-mini: 每天 100 次
                 "gpt-5-t-mini": { quota: 100, windowType: "daily" },
@@ -369,6 +393,8 @@
             },
             models: {
                 // 全量同步 Team 配置，额外：gpt-4-5 为 5次/周
+                "gpt-5-1": { quota: 10000, windowType: "hour3" },
+                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" },
                 "gpt-5": { quota: 10000, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },
@@ -389,6 +415,8 @@
             },
             models: {
                 // 全量同步 Team 配置，额外：gpt-4-5 为 5次/周
+                "gpt-5-1": { quota: 10000, windowType: "hour3" },
+                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" },
                 "gpt-5": { quota: 10000, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },
@@ -406,6 +434,8 @@
             name: "Pro",
             sharedQuotaGroups: {},
             models: {
+                "gpt-5-1": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
+                "gpt-5-1-thinking": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "gpt-5": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "gpt-5-thinking": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "gpt-5-t-mini": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
@@ -1019,7 +1049,7 @@
 
             // 确保添加的新模型在现有配置中也存在
             // 注意：仅用于迁移旧存储，新增项应与下方分支匹配
-            const newModels = ["gpt-5", "gpt-5-thinking", "gpt-5-pro", "gpt-4-1", "gpt-5-t-mini"];
+            const newModels = ["gpt-5", "gpt-5-thinking", "gpt-5-1", "gpt-5-1-thinking", "gpt-5-pro", "gpt-4-1", "gpt-5-t-mini"];
             newModels.forEach(modelId => {
                 if (!usageData.models[modelId]) {
                     console.debug(`[monitor] Adding new model "${modelId}" to configuration.`);
@@ -1030,6 +1060,18 @@
                             windowType: "hour3"
                         };
                     } else if (modelId === "gpt-5-thinking") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 3000,
+                            windowType: "weekly"
+                        };
+                    } else if (modelId === "gpt-5-1") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 1000,
+                            windowType: "hour3"
+                        };
+                    } else if (modelId === "gpt-5-1-thinking") {
                         usageData.models[modelId] = {
                             requests: [],
                             quota: 3000,
@@ -1539,9 +1581,52 @@
         return report;
     }
 
+    // 将未知模型（未在我们预设列表中的）合并到 gpt-5-1-instant（仅用于 HTML 导出展示，不改动存储）
+    function mergeUnknownModelsForHtml(report) {
+        try {
+            const KNOWN = new Set([
+                // 采用固定显示顺序中的模型
+                ...MODEL_DISPLAY_ORDER,
+                // 再补充兼容显示顺序外但“已知”的模型键
+                'gpt-5', 'gpt-5-thinking', 'gpt-5-1', 'gpt-5-1-thinking', 'gpt-5-1-instant', 'alpha'
+            ]);
+
+            const targetKey = 'gpt-5-1-instant';
+            if (!report.modelBreakdown[targetKey]) report.modelBreakdown[targetKey] = 0;
+
+            const unknownKeys = Object.keys(report.modelBreakdown).filter(k => !KNOWN.has(k));
+            if (unknownKeys.length === 0) return report;
+
+            // 合并总览
+            for (const key of unknownKeys) {
+                report.modelBreakdown[targetKey] += (report.modelBreakdown[key] || 0);
+                delete report.modelBreakdown[key];
+            }
+
+            // 合并每日数据
+            for (const day of report.dailyData) {
+                let add = 0;
+                for (const key of unknownKeys) {
+                    if (day.models[key]) {
+                        add += day.models[key];
+                        delete day.models[key];
+                    }
+                }
+                if (add > 0) {
+                    day.models[targetKey] = (day.models[targetKey] || 0) + add;
+                }
+            }
+
+            return report;
+        } catch (e) {
+            console.warn('[monitor] Failed to merge unknown models for HTML:', e);
+            return report;
+        }
+    }
+
     // 导出一周分析报告为HTML文件
     function exportWeeklyAnalysis() {
-        const report = generateWeeklyReport();
+        const report = mergeUnknownModelsForHtml(generateWeeklyReport());
 
         // 创建按固定顺序排列的模型数组
         const sortedModelKeys = MODEL_DISPLAY_ORDER
@@ -1859,7 +1944,7 @@
 
     // 导出一个月分析报告为HTML文件
     function exportMonthlyAnalysis() {
-        const report = generateMonthlyReport();
+        const report = mergeUnknownModelsForHtml(generateMonthlyReport());
 
         // 创建按固定顺序排列的模型数组
         const sortedModelKeys = MODEL_DISPLAY_ORDER
@@ -3400,7 +3485,7 @@
         container.appendChild(optionsContainer);
     }
 
-    // GPT-5 waiting tracker for thinking mode detection
+    // GPT-5/5-1 waiting tracker for thinking mode detection
     let gpt5WaitingTimer = null;
     let isWaitingForGPT5Response = false;
     
@@ -3456,19 +3541,28 @@
             recordModelUsageByModelId('gpt-5');
             return;
         }
+        // gpt-5-1-instant directly adds to gpt-5-1 (instant means no thinking)
+        if (effectiveModelId === "gpt-5-1-instant") {
+            console.log('[monitor] gpt-5-1-instant detected, directly adding to gpt-5-1');
+            recordModelUsageByModelId('gpt-5-1');
+            return;
+        }
         
-        // Only GPT-5 needs thinking detection
+        // Only GPT-5 series needs thinking detection
         if (effectiveModelId === "gpt-5") {
             console.log('[monitor] Starting GPT-5 thinking detection timer...');
-            startGPT5ThinkingTimer();
+            startGPT5ThinkingTimer('gpt-5');
+        } else if (effectiveModelId === "gpt-5-1") {
+            console.log('[monitor] Starting GPT-5-1 thinking detection timer...');
+            startGPT5ThinkingTimer('gpt-5-1');
         } else {
             // For all other models, record immediately as themselves
             recordModelUsageByModelId(effectiveModelId);
         }
     }
     
-    // Start timer to detect GPT-5 thinking mode
-    function startGPT5ThinkingTimer() {
+    // Start timer to detect GPT-5/GPT-5-1 thinking mode
+    function startGPT5ThinkingTimer(baseModelKey = 'gpt-5') {
         // Clear any existing timer
         if (gpt5WaitingTimer) {
             clearInterval(gpt5WaitingTimer);
@@ -3484,12 +3578,12 @@
             attempts++;
             
             // First, check if we have a direct response (this takes priority)
-            const hasDirectResponse = checkForDirectResponse();
+            const hasDirectResponse = checkForDirectResponse(baseModelKey);
             
             if (hasDirectResponse && !hasDetectedResponse) {
                 // Direct response detected - count as gpt-5 (normal mode)
                 console.log('[monitor] Direct response detected after', attempts * 300, 'ms');
-                recordModelUsageByModelId('gpt-5');
+                recordModelUsageByModelId(baseModelKey);
                 clearInterval(gpt5WaitingTimer);
                 isWaitingForGPT5Response = false;
                 hasDetectedResponse = true;
@@ -3504,7 +3598,8 @@
                 if (hasThinkingIndicator && !hasDetectedResponse) {
                     // Thinking mode detected - count as gpt-5-thinking
                     console.log('[monitor] Thinking mode detected after', Date.now() - startTime, 'ms');
-                    recordModelUsageByModelId('gpt-5-thinking');
+                    const thinkingKey = baseModelKey === 'gpt-5' ? 'gpt-5-thinking' : (baseModelKey + '-thinking');
+                    recordModelUsageByModelId(thinkingKey);
                     clearInterval(gpt5WaitingTimer);
                     isWaitingForGPT5Response = false;
                     hasDetectedResponse = true;
@@ -3515,7 +3610,7 @@
             // Timeout - assume it's normal mode
             if (attempts >= maxAttempts && !hasDetectedResponse) {
                 console.log('[monitor] Timeout reached, assuming normal mode');
-                recordModelUsageByModelId('gpt-5');
+                recordModelUsageByModelId(baseModelKey);
                 clearInterval(gpt5WaitingTimer);
                 isWaitingForGPT5Response = false;
                 hasDetectedResponse = true;
@@ -3559,9 +3654,17 @@
     }
     
     // —— 用结构+稳定态判定直接回复（替换原来的长度阈值方法）
-    function checkForDirectResponse() {
-        // 只看最新一条 GPT-5 助手消息
-        const candidates = [...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5"]')];
+    function checkForDirectResponse(baseModelKey = 'gpt-5') {
+        // 只看最新一条 GPT-5/GPT-5-1 助手消息
+        let candidates = [];
+        if (baseModelKey === 'gpt-5-1') {
+            candidates = [
+                ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5-1"]'),
+                ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5.1"]')
+            ];
+        } else {
+            candidates = [...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5"]')];
+        }
         if (!candidates.length) return false;
         const msg = candidates[candidates.length - 1];
 
@@ -4315,5 +4418,5 @@
     scheduleInitialize(300);
 
     console.log("🚀 ChatGPT Usage Monitor loaded");
-    // v3.8.2
+    // v3.8.4
 })();
