@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.8.4
+// @version      3.9
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
-// @author       tizee (original), schweigen (modified)
+// @author       tizee (original), schweigen (modified), Loongphy (modified)
 // @match        https://chatgpt.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=chatgpt.com
 // @grant        GM_setValue
@@ -12,8 +12,8 @@
 // @grant        GM_registerMenuCommand
 // @license      MIT
 // @run-at       document-start
-// @downloadURL  https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage/ChatGPT_Usage.js
-// @updateURL    https://raw.githubusercontent.com/lueluelue2006/ChatGPT-Usage/main/ChatGPT_Usage/ChatGPT_Usage.js
+// @downloadURL https://update.greasyfork.org/scripts/533399/ChatGPT%E7%94%A8%E9%87%8F%E7%BB%9F%E8%AE%A1.user.js
+// @updateURL https://update.greasyfork.org/scripts/533399/ChatGPT%E7%94%A8%E9%87%8F%E7%BB%9F%E8%AE%A1.meta.js
 // ==/UserScript==
 
 (function () {
@@ -452,7 +452,7 @@
         }
     };
 
-    // Updated Styles
+    // Updated Styles（基础深色样式）
     GM_addStyle(`
   #chatUsageMonitor {
     position: fixed;
@@ -471,7 +471,12 @@
     border: 1px solid ${COLORS.border};
     user-select: none;
     resize: both;
-    transition: all 0.3s ease;
+    /* 避免拖动时 left/top 被动画影响导致不跟手 */
+    transition: box-shadow 0.3s ease,
+                opacity 0.2s ease,
+                background-color 0.2s ease,
+                width 0.2s ease,
+                height 0.2s ease;
     transform-origin: top left;  /* 改为左侧 */
   }
 
@@ -497,15 +502,21 @@
     opacity: 1;
   }
 
+  /* 胶囊悬浮球 */
   #chatUsageMonitor.minimized {
-    width: 30px !important;
-    height: 30px !important;
-    border-radius: 50%;
-    overflow: hidden;
+    width: auto !important;
+    min-width: 44px;
+    height: 36px !important;
+    padding: 0 12px;
+    border-radius: 9999px;
+    overflow: visible;
     resize: none;
-    opacity: 0.8;
+    opacity: 0.92;
     cursor: pointer;
-    background-color: ${COLORS.primary};
+    background-color: rgba(26, 27, 30, 0.72);
+    backdrop-filter: saturate(180%) blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     bottom: auto;
     top: 100px;  /* 往下移动一点点 */
     left: ${STYLE.spacing.lg};  /* 改为左侧 */
@@ -521,8 +532,8 @@
   }
 
   #chatUsageMonitor.minimized::before {
-    content: "次";
-    color: white;
+    content: "用量";
+    color: ${COLORS.white};
     position: absolute;
     top: 0;
     left: 0;
@@ -531,8 +542,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
-    font-weight: bold;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
   }
 
   #chatUsageMonitor header {
@@ -624,7 +636,7 @@
     padding: ${STYLE.spacing.sm} ${STYLE.spacing.md};
     border: none;
     cursor: pointer;
-    color: ${COLORS.white};
+    color: ${COLORS.text};
     font-weight: 500;
     font-size: ${STYLE.textSize.sm};
     transition: all 0.2s ease;
@@ -864,12 +876,16 @@
 
   #chatUsageMonitor .table-header {
     font-family: monospace;
-    color: ${COLORS.white};
+    color: ${COLORS.text};
     font-size:  ${STYLE.textSize.xs};
     line-height: ${STYLE.lineHeight.xs};
     display : grid;
     align-items: center;
-    grid-template-columns: 2fr 1.5fr 1.5fr 2fr;
+    /* 用量页：给模型名称更多空间，避免被挤断 */
+    grid-template-columns: 3fr 1.1fr 1.3fr 1.8fr;
+    padding: 4px 8px;
+    margin-top: 8px;
+    border-bottom: 1px solid ${COLORS.border};
   }
 
   #chatUsageMonitor .model-row {
@@ -879,8 +895,10 @@
     font-size:  ${STYLE.textSize.xs};
     line-height: ${STYLE.lineHeight.xs};
     display : grid;
-    grid-template-columns: 2fr 1.5fr 1.5fr 2fr;
+    grid-template-columns: 3fr 1.1fr 1.3fr 1.8fr;
     align-items: center;
+    padding: 4px 8px;
+    border-radius: 6px;
   }
 
   #chatUsageMonitor .model-row:hover {
@@ -898,7 +916,7 @@
   #chatUsageMonitor .deepresearch-title {
     font-family: monospace;
     font-weight: bold;
-    color: ${COLORS.white};
+    color: ${COLORS.text};
     font-size: ${STYLE.textSize.xs};
     margin: 6px 0;
   }
@@ -916,7 +934,7 @@
     -moz-appearance: none;    /* Firefox */
     appearance: none;         /* Standard modern browsers */
     background-color: transparent;
-    color: #ffffff;
+    color: ${COLORS.text};
     border: none;
     cursor: pointer;
     color: ${COLORS.white};
@@ -928,7 +946,7 @@
   /* Style the list of options (when the dropdown is open) */
   .custom-select select option {
     background: ${COLORS.background};
-    color: ${COLORS.white};
+    color: ${COLORS.text};
   }
 
   /* Optional: highlight the hovered option in some browsers */
@@ -971,7 +989,7 @@
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: ${COLORS.background};
+    background: ${COLORS.surface};
     color: ${COLORS.success};
     padding: ${STYLE.spacing.sm} ${STYLE.spacing.md};
     border-radius: ${STYLE.borderRadius};
@@ -2759,27 +2777,6 @@
     function updateUsageContent(container) {
         container.innerHTML = "";
 
-        // Sliding window explanation
-        const infoSection = document.createElement("div");
-        infoSection.className = "reset-info";
-        infoSection.innerHTML = `<b>滑动窗口跟踪:</b>`;
-
-        const windowTypes = document.createElement("div");
-        windowTypes.style.display = "flex";
-        windowTypes.style.justifyContent = "space-between";
-        windowTypes.style.marginTop = "4px";
-
-        windowTypes.innerHTML = `
-            <span><span class="window-badge hour3">3h</span> 3小时窗口</span>
-            <span><span class="window-badge hour5">5h</span> 5小时窗口</span>
-            <span><span class="window-badge daily">24h</span> 24小时窗口</span>
-            <span><span class="window-badge weekly">7d</span> 7天窗口</span>
-            <span><span class="window-badge monthly">30d</span> 30天窗口</span>
-        `;
-
-        infoSection.appendChild(windowTypes);
-        container.appendChild(infoSection);
-
         // Table Header Row
         const tableHeader = document.createElement("div");
         tableHeader.className = "table-header";
@@ -3224,7 +3221,7 @@
         planTitle.textContent = "套餐设置";
         planTitle.style.fontWeight = "bold";
         planTitle.style.marginBottom = "8px";
-        planTitle.style.color = COLORS.white;
+        planTitle.style.color = COLORS.text;
         planSelectorContainer.appendChild(planTitle);
 
         // 套餐选择器
@@ -3242,7 +3239,7 @@
         const planTypeSelect = document.createElement("select");
         planTypeSelect.style.width = "140px";
         planTypeSelect.style.backgroundColor = COLORS.background;
-        planTypeSelect.style.color = COLORS.white;
+        planTypeSelect.style.color = COLORS.text;
         planTypeSelect.style.border = `1px solid ${COLORS.border}`;
         planTypeSelect.style.borderRadius = "4px";
         planTypeSelect.style.padding = "4px 8px";
@@ -3373,7 +3370,7 @@
         optionsTitle.textContent = "界面设置";
         optionsTitle.style.fontWeight = "bold";
         optionsTitle.style.marginBottom = "8px";
-        optionsTitle.style.color = COLORS.white;
+        optionsTitle.style.color = COLORS.text;
         optionsContainer.appendChild(optionsTitle);
 
         // Progress type selector
@@ -3391,7 +3388,7 @@
         const progressTypeSelect = document.createElement("select");
         progressTypeSelect.style.width = "100px"; // 限制宽度
         progressTypeSelect.style.backgroundColor = COLORS.background;
-        progressTypeSelect.style.color = COLORS.white;
+        progressTypeSelect.style.color = COLORS.text;
         progressTypeSelect.style.border = `1px solid ${COLORS.border}`;
         progressTypeSelect.style.borderRadius = "4px";
         progressTypeSelect.style.padding = "3px 6px";
@@ -3910,9 +3907,12 @@
     }
 
     // Improved draggable functionality that supports both vertical and horizontal movement
+    //（采用你提供的 3.7 版本方案）
     function setupDraggable(element) {
         let isDragging = false;
         let startX, startY, origLeft, origTop;
+        let prevTransition = '';
+        let prevUserSelect = '';
 
         // Make header draggable
         const handle = element.querySelector('header');
@@ -3944,6 +3944,14 @@
             const rect = element.getBoundingClientRect();
             origLeft = rect.left;
             origTop = rect.top;
+
+            // Temporarily disable transitions to avoid laggy dragging
+            prevTransition = element.style.transition;
+            element.style.transition = 'none';
+            element.style.willChange = 'left, top';
+            // Prevent text selection while dragging
+            prevUserSelect = document.body.style.userSelect;
+            document.body.style.userSelect = 'none';
 
             // Add movement handlers
             document.addEventListener('mousemove', handleDrag);
@@ -4008,6 +4016,11 @@
                 e.preventDefault();
                 e.stopPropagation();
             }
+
+            // Restore transitions and selection regardless of whether it was a drag
+            element.style.transition = prevTransition;
+            element.style.willChange = '';
+            document.body.style.userSelect = prevUserSelect;
         }
     }
 
