@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.8.5
+// @version      3.8.6
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -239,13 +239,6 @@
         sharedQuotaGroups: {
             // "group-id": { requests: [], quota: number, windowType: string, models: ["model1", "model2"] }
         },
-        // DeepResearch 统计数据（通过 API 精准获取）
-        deepResearch: {
-            remaining: null,
-            resetAfter: null,
-            lastUpdated: null,
-            sourceEndpoint: null
-        },
         models: {
             "gpt-5-1": {
                 requests: [],
@@ -271,6 +264,11 @@
                 requests: [],
                 quota: 10000, // Team套餐：10000次/3小时
                 windowType: "hour3" // 3-hour window
+            },
+            "gpt-5-1-pro": {
+                requests: [],
+                quota: 15, // Team套餐：15次/月
+                windowType: "monthly" // 30-day window
             },
             "gpt-5-pro": {
                 requests: [],
@@ -302,11 +300,11 @@
 
     // 模型固定显示顺序
     const MODEL_DISPLAY_ORDER = [
+        "gpt-5-1-pro",
         "gpt-5-pro",
         "o3-pro",
         "gpt-4-5",
         "o3",
-        "o4-mini-high",
         "o4-mini",
         "gpt-4o",
         "gpt-4-1",
@@ -336,11 +334,11 @@
                 "gpt-5": { quota: 10000, windowType: "hour3" }, // unlimited
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 10000次/3小时
+                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
                 "gpt-5-pro": { quota: 15, windowType: "monthly" },
                 "gpt-4o": { quota: 10000, windowType: "hour3" }, // unlimited
                 "gpt-4-1": { quota: 500, windowType: "hour3" },
                 "o4-mini": { quota: 300, windowType: "daily" },
-                "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
             }
@@ -360,7 +358,6 @@
                 "gpt-4o": { quota: 80, windowType: "hour3" },
                 "gpt-4-1": { quota: 80, windowType: "hour3" },
                 "o4-mini": { quota: 300, windowType: "daily" },
-                "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
             }
@@ -406,11 +403,11 @@
                 "gpt-5": { quota: 10000, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },
+                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
                 "gpt-5-pro": { quota: 15, windowType: "monthly" },
                 "gpt-4o": { quota: 10000, windowType: "hour3" },
                 "gpt-4-1": { quota: 500, windowType: "hour3" },
                 "o4-mini": { quota: 300, windowType: "daily" },
-                "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
                 "gpt-4-5": { quota: 5, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
@@ -428,11 +425,11 @@
                 "gpt-5": { quota: 10000, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },
+                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
                 "gpt-5-pro": { quota: 15, windowType: "monthly" },
                 "gpt-4o": { quota: 10000, windowType: "hour3" },
                 "gpt-4-1": { quota: 500, windowType: "hour3" },
                 "o4-mini": { quota: 300, windowType: "daily" },
-                "o4-mini-high": { quota: 100, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
                 "gpt-4-5": { quota: 5, windowType: "weekly" },
                 "gpt-5-mini": { quota: 10000, windowType: "hour3" }
@@ -447,11 +444,11 @@
                 "gpt-5": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "gpt-5-thinking": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "gpt-5-t-mini": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
+                "gpt-5-1-pro": { quota: 100, windowType: "daily" }, // Pro: 每天100次
                 "gpt-5-pro": { quota: 100, windowType: "daily" }, // Pro: 每天100次
                 "gpt-4o": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "gpt-4-1": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "o4-mini": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "o4-mini-high": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "o3": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
                 "o3-pro": { quota: 100, windowType: "daily" }, // Pro: 每天100次
                 "gpt-4-5": { quota: 100, windowType: "daily" }, // Pro: 每天100次
@@ -1063,10 +1060,24 @@
             if (usageData.models && usageData.models["gpt-4-1-mini"]) {
                 delete usageData.models["gpt-4-1-mini"];
             }
+            if (usageData.models && usageData.models["o4-mini-high"]) {
+                delete usageData.models["o4-mini-high"];
+            }
+            const gpt51ProAllowedPlans = ["team", "edu", "enterprise", "pro"];
+            const isGpt51ProAllowed = gpt51ProAllowedPlans.includes(usageData.planType);
+            if (!isGpt51ProAllowed && usageData.models && usageData.models["gpt-5-1-pro"]) {
+                delete usageData.models["gpt-5-1-pro"];
+            }
+            if (usageData.deepResearch) {
+                delete usageData.deepResearch;
+            }
 
             // 确保添加的新模型在现有配置中也存在
             // 注意：仅用于迁移旧存储，新增项应与下方分支匹配
             const newModels = ["gpt-5", "gpt-5-thinking", "gpt-5-1", "gpt-5-1-thinking", "gpt-5-pro", "gpt-4-1", "gpt-5-t-mini"];
+            if (isGpt51ProAllowed) {
+                newModels.push("gpt-5-1-pro");
+            }
             newModels.forEach(modelId => {
                 if (!usageData.models[modelId]) {
                     console.debug(`[monitor] Adding new model "${modelId}" to configuration.`);
@@ -1093,6 +1104,12 @@
                             requests: [],
                             quota: 3000,
                             windowType: "weekly"
+                        };
+                    } else if (modelId === "gpt-5-1-pro") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 15,
+                            windowType: "monthly"
                         };
                     } else if (modelId === "gpt-5-pro") {
                         usageData.models[modelId] = {
@@ -2899,59 +2916,6 @@
 
             container.appendChild(emptyState);
         }
-
-        // —— DeepResearch 区域 ——
-        appendDeepResearchSection(container);
-    }
-
-    // 在使用量区域下方增加 DeepResearch 统计（与普通模型分开展示）
-    function appendDeepResearchSection(container) {
-        try {
-            // 分割线
-            const divider = document.createElement('div');
-            divider.className = 'section-divider';
-            container.appendChild(divider);
-
-            // 明细行（沿用 model-row 的栅格，字段：名称 / 最后使用 / 使用量 / 进度）
-            const row = document.createElement('div');
-            row.className = 'model-row';
-
-            const colName = document.createElement('div');
-            colName.textContent = 'DeepResearch';
-            row.appendChild(colName);
-
-            const colLast = document.createElement('div');
-            // DeepResearch 的接口不提供“最近使用时间”，留空
-            colLast.textContent = '';
-            row.appendChild(colLast);
-
-            const colRemain = document.createElement('div');
-            const dr = usageData.deepResearch || {};
-            colRemain.textContent = (dr.remaining ?? '--').toString();
-            row.appendChild(colRemain);
-
-            const colReset = document.createElement('div');
-            // 兼容字符串/可解析时间
-            if ((usageData.deepResearch || {}).resetAfter) {
-                try {
-                    const d = new Date(usageData.deepResearch.resetAfter);
-                    if (!isNaN(d.getTime())) {
-                        colReset.textContent = d.toLocaleString('zh-CN');
-                    } else {
-                        colReset.textContent = String(usageData.deepResearch.resetAfter);
-                    }
-                } catch {
-                    colReset.textContent = String(usageData.deepResearch.resetAfter);
-                }
-            } else {
-                colReset.textContent = '--';
-            }
-            row.appendChild(colReset);
-
-            container.appendChild(row);
-        } catch (e) {
-            console.warn('[monitor] Failed to render DeepResearch section:', e);
-        }
     }
 
     function updateSettingsContent(container) {
@@ -4252,45 +4216,6 @@
                         handleConversationRequest(bodyObj.model);
                     }
                 }
-
-                // —— DeepResearch 精准 API 拦截（完全沿用指定脚本方法）——
-                const targetApis = [
-                    { url: "/backend-api/conversation/init", method: "POST" },
-                    { url: "/backend-api/accounts/check", method: "GET" },
-                    { url: "/backend-api/me", method: "GET" },
-                    { url: "/backend-api/models", method: "GET" }
-                ];
-
-                const shouldInterceptDR = targetApis.some(api =>
-                    (fetchUrl && fetchUrl.includes(api.url)) &&
-                    (requestMethod && requestMethod.toUpperCase() === api.method)
-                );
-
-                if (shouldInterceptDR && response.ok) {
-                    let responseBodyText;
-                    try {
-                        responseBodyText = await response.text();
-                        const data = JSON.parse(responseBodyText);
-                        analyzeResponseForDeepResearch(data, fetchUrl);
-
-                        // 返回新的 Response 对象（与引用脚本一致的做法）
-                        return new Response(responseBodyText, {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: response.headers,
-                        });
-                    } catch (error) {
-                        console.error(`❌ 处理 ${fetchUrl} 响应出错:`, error);
-                        if (typeof responseBodyText === "string") {
-                            return new Response(responseBodyText, {
-                                status: response.status,
-                                statusText: response.statusText,
-                                headers: response.headers,
-                            });
-                        }
-                    }
-                }
-
             } catch (error) {
                 console.warn("[monitor] Failed to process request:", error);
             }
@@ -4298,66 +4223,6 @@
             return response;
         },
     });
-
-    // =============== DeepResearch：响应数据分析（完全照搬逻辑） ===============
-    function analyzeResponseForDeepResearch(data, endpoint) {
-        if (!data || typeof data !== 'object') return false;
-
-        // 检查 limits_progress 字段
-        if (data.limits_progress && Array.isArray(data.limits_progress)) {
-            const deepResearch = data.limits_progress.find(
-                item => item.feature_name === 'deep_research'
-            );
-
-            if (deepResearch) {
-                console.log(`✅ 在 ${endpoint} 找到 DeepResearch 数据:`, deepResearch);
-                updateDeepResearchData(deepResearch.remaining, deepResearch.reset_after, endpoint);
-                return true;
-            }
-        }
-
-        // 递归搜索包含 "deep_research" 的任何字段
-        function deepSearch(obj) {
-            if (!obj || typeof obj !== 'object') return false;
-
-            for (const [key, value] of Object.entries(obj)) {
-                // 检查键名是否包含相关信息
-                if (key.toLowerCase().includes('deep') || key.toLowerCase().includes('research')) {
-                    if (typeof value === 'object' && value !== null && value.remaining !== undefined) {
-                        console.log(`✅ 找到 DeepResearch 数据:`, value);
-                        updateDeepResearchData(value.remaining, value.reset_after || value.resetAfter, endpoint);
-                        return true;
-                    }
-                }
-
-                // 递归搜索
-                if (typeof value === 'object' && value !== null) {
-                    if (deepSearch(value)) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        return deepSearch(data);
-    }
-
-    function updateDeepResearchData(remaining, resetAfter, sourceEndpoint) {
-        usageData = Storage.get();
-        if (!usageData.deepResearch) {
-            usageData.deepResearch = { remaining: null, resetAfter: null, lastUpdated: null, sourceEndpoint: null };
-        }
-        if (typeof remaining === 'number') {
-            usageData.deepResearch.remaining = remaining;
-            usageData.deepResearch.resetAfter = resetAfter || null;
-            usageData.deepResearch.lastUpdated = Date.now();
-            usageData.deepResearch.sourceEndpoint = sourceEndpoint || null;
-            Storage.set(usageData);
-            updateUI();
-            console.log(`✅ [DeepResearch] 剩余次数: ${remaining}, 重置时间: ${resetAfter}`);
-        }
-    }
 
     // Initialize
     function initialize() {
@@ -4452,5 +4317,5 @@
     scheduleInitialize(300);
 
     console.log("🚀 ChatGPT Usage Monitor loaded");
-    // v3.8.5
+    // v3.8.6
 })();
