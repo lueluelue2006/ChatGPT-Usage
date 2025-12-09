@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.8.6
+// @version      3.8.7
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -202,15 +202,15 @@
             console.debug('[monitor] Redirecting model auto -> gpt-5');
             return 'gpt-5';
         }
-        // 在 team/plus/free 套餐下，gpt-4-5 重定向到 gpt-5-1（沿用 instant 逻辑，不计入 thinking）
+        // 在非 Pro 套餐下，gpt-4-5 重定向到 gpt-5-1（沿用 instant 逻辑，不计入 thinking）
         try {
             const plan = (usageData && usageData.planType) || 'team';
-            if ((plan === 'team' || plan === 'plus' || plan === 'free') && originalModelId === 'gpt-4-5') {
-                console.debug('[monitor] Redirecting model gpt-4-5 -> gpt-5-1 for plan', plan);
+            if (originalModelId === 'gpt-4-5' && plan !== 'pro') {
+                console.debug('[monitor] Redirecting model gpt-4-5 -> gpt-5-1 (instant) for plan', plan);
                 return 'gpt-5-1-instant';
             }
             // 非 Pro 套餐下，o3-pro 重定向到 gpt-5-1（instant，不计思考）
-            if (plan !== 'pro' && originalModelId === 'o3-pro') {
+            if (originalModelId === 'o3-pro' && plan !== 'pro') {
                 console.debug('[monitor] Redirecting model o3-pro -> gpt-5-1 for plan', plan);
                 return 'gpt-5-1-instant';
             }
@@ -232,7 +232,7 @@
         // 静默模式：采集数据但不显示UI
         silentMode: false,
         progressType: "bar", // bar or dots (default to bar)
-        planType: "team", // 默认套餐：team, plus, free, edu, enterprise, pro, go
+        planType: "team", // 默认套餐：team, plus, free, edu, enterprise, pro, go, k12_teacher
         // 新增：是否显示窗口刷新时间，默认关闭以保持界面简洁
         showWindowResetTime: false,
         // 共用额度组的使用记录
@@ -242,28 +242,28 @@
         models: {
             "gpt-5-1": {
                 requests: [],
-                quota: 10000, // Team套餐：无限制
-                windowType: "hour3" // 3-hour window
+                quota: 10000, // Team套餐：名义无限（3小时窗口）
+                windowType: "hour3"
             },
             "gpt-5-1-thinking": {
                 requests: [],
                 quota: 3000, // Team套餐：3000次/周
-                windowType: "weekly" // 7-day window
+                windowType: "weekly"
             },
             "gpt-5": {
                 requests: [],
-                quota: 10000, // Team套餐：无限制
-                windowType: "hour3" // 3-hour window
+                quota: 10000, // Team套餐：名义无限（3小时窗口）
+                windowType: "hour3"
             },
             "gpt-5-thinking": {
                 requests: [],
                 quota: 3000, // Team套餐：3000次/周
-                windowType: "weekly" // 7-day window
+                windowType: "weekly"
             },
             "gpt-5-t-mini": {
                 requests: [],
-                quota: 10000, // Team套餐：10000次/3小时
-                windowType: "hour3" // 3-hour window
+                quota: 10000, // Team套餐：名义无限（3小时窗口）
+                windowType: "hour3"
             },
             "gpt-5-1-pro": {
                 requests: [],
@@ -277,23 +277,28 @@
             },
             "gpt-4o": {
                 requests: [],
-                quota: 10000, // Team套餐：无限制
-                windowType: "hour3" // 3-hour window
+                quota: 80, // Team套餐：80次/3小时
+                windowType: "hour3"
             },
             "gpt-4-1": {
                 requests: [],
                 quota: 500, // Team套餐：500次/3小时
-                windowType: "hour3" // 3-hour window
+                windowType: "hour3"
             },
             "o4-mini": {
                 requests: [],
                 quota: 300, // Team套餐：300次/天
-                windowType: "daily" // 24-hour window
+                windowType: "daily"
             },
             "o3": {
                 requests: [],
                 quota: 100, // Team套餐：100次/周
-                windowType: "weekly" // 7-day window
+                windowType: "weekly"
+            },
+            "gpt-5-mini": {
+                requests: [],
+                quota: 10000, // Team套餐：名义无限（3小时窗口）
+                windowType: "hour3"
             }
         },
     };
@@ -319,76 +324,81 @@
 
     // 套餐配置
     // 套餐显示顺序
-    const PLAN_DISPLAY_ORDER = ["free", "plus", "team", "edu", "enterprise", "pro"]; // 其余套餐（如 go）排在后面
+    const PLAN_DISPLAY_ORDER = ["free", "go", "k12_teacher", "plus", "team", "edu", "enterprise", "pro"]; // 其余套餐排在后面
 
     const PLAN_CONFIGS = {
-        team: {
-            name: "Team",
-            // 共用额度组配置
-            sharedQuotaGroups: {
-                // 移除共用额度组，恢复独立配额
-            },
-            models: {
-                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // unlimited
-                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
-                "gpt-5": { quota: 10000, windowType: "hour3" }, // unlimited
-                "gpt-5-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
-                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 10000次/3小时
-                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
-                "gpt-5-pro": { quota: 15, windowType: "monthly" },
-                "gpt-4o": { quota: 10000, windowType: "hour3" }, // unlimited
-                "gpt-4-1": { quota: 500, windowType: "hour3" },
-                "o4-mini": { quota: 300, windowType: "daily" },
-                "o3": { quota: 100, windowType: "weekly" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }
-            }
-        },
-        plus: {
-            name: "Plus",
-            // 共用额度组配置
-            sharedQuotaGroups: {
-                // 移除共用额度组，恢复独立配额
-            },
-            models: {
-                "gpt-5-1": { quota: 160, windowType: "hour3" },
-                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
-                "gpt-5": { quota: 160, windowType: "hour3" },
-                "gpt-5-thinking": { quota: 3000, windowType: "weekly" }, // 3000次/周
-                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 10000次/3小时
-                "gpt-4o": { quota: 80, windowType: "hour3" },
-                "gpt-4-1": { quota: 80, windowType: "hour3" },
-                "o4-mini": { quota: 300, windowType: "daily" },
-                "o3": { quota: 100, windowType: "weekly" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }
-            }
-        },
         free: {
             name: "Free",
             sharedQuotaGroups: {},
             models: {
-                "gpt-5-1": { quota: 10, windowType: "hour5" },
-                "gpt-5": { quota: 10, windowType: "hour5" },
-                // thinking: 5小时 1次
-                "gpt-5-1-thinking": { quota: 1, windowType: "hour5" },
-                "gpt-5-thinking": { quota: 1, windowType: "hour5" },
-                // thinking-mini: 每天 10 次
-                "gpt-5-t-mini": { quota: 10, windowType: "daily" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5": { quota: 10000, windowType: "hour3" },   // 名义无限
+                "gpt-5-1-thinking": { quota: 1, windowType: "hour5" }, // 5小时 1次
+                "gpt-5-thinking": { quota: 1, windowType: "hour5" },   // 5小时 1次
+                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" }    // 名义无限
             }
         },
-        // 新增套餐：Go（为 Free 的 10 倍）
         go: {
             name: "Go",
             sharedQuotaGroups: {},
             models: {
-                "gpt-5-1": { quota: 100, windowType: "hour5" },
-                "gpt-5": { quota: 100, windowType: "hour5" },
-                // thinking: 5小时 10次
-                "gpt-5-1-thinking": { quota: 10, windowType: "hour5" },
-                "gpt-5-thinking": { quota: 10, windowType: "hour5" },
-                // thinking-mini: 每天 100 次
-                "gpt-5-t-mini": { quota: 100, windowType: "daily" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5": { quota: 10000, windowType: "hour3" },   // 名义无限
+                "gpt-5-1-thinking": { quota: 10, windowType: "hour5" }, // 5小时 10次
+                "gpt-5-thinking": { quota: 10, windowType: "hour5" },   // 5小时 10次
+                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },  // 名义无限
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" }     // 名义无限
+            }
+        },
+        k12_teacher: {
+            name: "K12 Teacher",
+            sharedQuotaGroups: {},
+            models: {
+                "gpt-5-1": { quota: 160, windowType: "hour3" },
+                "gpt-5": { quota: 160, windowType: "hour3" },
+                "gpt-5-t-mini": { quota: 160, windowType: "hour3" },
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5-1-thinking": { quota: 0, windowType: "hour3" }, // 不可用
+                "gpt-5-thinking": { quota: 0, windowType: "hour3" }    // 不可用
+            }
+        },
+        plus: {
+            name: "Plus",
+            sharedQuotaGroups: {
+                // 移除共用额度组，恢复独立配额
+            },
+            models: {
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5": { quota: 10000, windowType: "hour3" },   // 名义无限
+                "gpt-5-1-thinking": { quota: 160, windowType: "hour3" },
+                "gpt-5-thinking": { quota: 160, windowType: "hour3" },
+                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "o3": { quota: 100, windowType: "weekly" },
+                "o4-mini": { quota: 300, windowType: "daily" },
+                "gpt-4o": { quota: 80, windowType: "hour3" },
+                "gpt-4-1": { quota: 80, windowType: "hour3" },
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" } // 名义无限
+            }
+        },
+        team: {
+            name: "Team",
+            sharedQuotaGroups: {
+                // 移除共用额度组，恢复独立配额
+            },
+            models: {
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5": { quota: 10000, windowType: "hour3" },   // 名义无限
+                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" },
+                "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
+                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
+                "gpt-5-pro": { quota: 15, windowType: "monthly" },
+                "o3": { quota: 100, windowType: "weekly" },
+                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "o4-mini": { quota: 300, windowType: "daily" },
+                "gpt-4o": { quota: 80, windowType: "hour3" },
+                "gpt-4-1": { quota: 500, windowType: "hour3" },
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" } // 名义无限
             }
         },
         edu: {
@@ -397,20 +407,18 @@
                 // 移除共用额度组，恢复独立配额
             },
             models: {
-                // 全量同步 Team 配置，额外：gpt-4-5 为 5次/周
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" },
-                "gpt-5": { quota: 10000, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
-                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },
                 "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
                 "gpt-5-pro": { quota: 15, windowType: "monthly" },
-                "gpt-4o": { quota: 10000, windowType: "hour3" },
-                "gpt-4-1": { quota: 500, windowType: "hour3" },
-                "o4-mini": { quota: 300, windowType: "daily" },
                 "o3": { quota: 100, windowType: "weekly" },
-                "gpt-4-5": { quota: 5, windowType: "weekly" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }
+                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "o4-mini": { quota: 300, windowType: "daily" },
+                "gpt-4o": { quota: 80, windowType: "hour3" },
+                "gpt-4-1": { quota: 500, windowType: "hour3" },
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" } // 名义无限
             }
         },
         enterprise: {
@@ -419,40 +427,39 @@
                 // 移除共用额度组，恢复独立配额
             },
             models: {
-                // 全量同步 Team 配置，额外：gpt-4-5 为 5次/周
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },
+                "gpt-5-1": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "gpt-5": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" },
-                "gpt-5": { quota: 10000, windowType: "hour3" },
                 "gpt-5-thinking": { quota: 3000, windowType: "weekly" },
-                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },
                 "gpt-5-1-pro": { quota: 15, windowType: "monthly" },
                 "gpt-5-pro": { quota: 15, windowType: "monthly" },
-                "gpt-4o": { quota: 10000, windowType: "hour3" },
-                "gpt-4-1": { quota: 500, windowType: "hour3" },
-                "o4-mini": { quota: 300, windowType: "daily" },
+                "o3-pro": { quota: 20, windowType: "monthly" },
                 "o3": { quota: 100, windowType: "weekly" },
-                "gpt-4-5": { quota: 5, windowType: "weekly" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }
+                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" }, // 名义无限
+                "o4-mini": { quota: 300, windowType: "daily" },
+                "gpt-4o": { quota: 80, windowType: "hour3" },
+                "gpt-4-1": { quota: 500, windowType: "hour3" },
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" } // 名义无限
             }
         },
         pro: {
             name: "Pro",
             sharedQuotaGroups: {},
             models: {
-                "gpt-5-1": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "gpt-5-1-thinking": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "gpt-5": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "gpt-5-thinking": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "gpt-5-t-mini": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "gpt-5-1-pro": { quota: 100, windowType: "daily" }, // Pro: 每天100次
-                "gpt-5-pro": { quota: 100, windowType: "daily" }, // Pro: 每天100次
-                "gpt-4o": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "gpt-4-1": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "o4-mini": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "o3": { quota: 10000, windowType: "daily" }, // Pro：10000次/24小时
-                "o3-pro": { quota: 100, windowType: "daily" }, // Pro: 每天100次
-                "gpt-4-5": { quota: 100, windowType: "daily" }, // Pro: 每天100次
-                "gpt-5-mini": { quota: 10000, windowType: "daily" }
+                "gpt-5-1": { quota: 10000, windowType: "daily" },       // 名义无限
+                "gpt-5": { quota: 10000, windowType: "daily" },         // 名义无限
+                "gpt-5-1-thinking": { quota: 10000, windowType: "daily" }, // 名义无限
+                "gpt-5-thinking": { quota: 10000, windowType: "daily" },   // 名义无限
+                "gpt-5-t-mini": { quota: 10000, windowType: "daily" },     // 名义无限
+                "gpt-5-1-pro": { quota: 100, windowType: "daily" },        // 每天100次
+                "gpt-5-pro": { quota: 100, windowType: "daily" },          // 每天100次
+                "o3-pro": { quota: 100, windowType: "daily" },             // 每天100次
+                "gpt-4-5": { quota: 100, windowType: "daily" },            // 每天100次
+                "o3": { quota: 10000, windowType: "daily" },               // 名义无限
+                "gpt-5-mini": { quota: 10000, windowType: "daily" },       // 名义无限
+                "o4-mini": { quota: 10000, windowType: "daily" },          // 名义无限
+                "gpt-4o": { quota: 10000, windowType: "daily" },           // 名义无限
+                "gpt-4-1": { quota: 10000, windowType: "daily" }           // 名义无限
             }
         }
     };
