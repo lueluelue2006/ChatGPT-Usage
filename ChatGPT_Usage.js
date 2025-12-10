@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.9.0
+// @version      3.10.0
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -257,6 +257,30 @@
         },
     };
 
+    // 共享组配色（仅用于界面层的视觉提示）
+    const SHARED_GROUP_COLORS = {
+        "pro-premium-shared": "#facc15",   // 亮黄色
+        "pro-thinking-shared": "#34d399",  // 亮绿色
+        "pro-instant-shared": "#60a5fa",   // 亮蓝色
+        "team-premium-shared": "#facc15",
+        "edu-premium-shared": "#facc15",
+        "enterprise-premium-shared": "#facc15",
+        "go-thinking-shared": "#34d399",
+        "k12-thinking-shared": "#34d399",
+        "plus-thinking-shared": "#34d399",
+        "team-thinking-shared": "#34d399",
+        "edu-thinking-shared": "#34d399",
+        "enterprise-thinking-shared": "#34d399",
+        "pro-thinking-shared": "#34d399",
+        "free-instant-shared": "#60a5fa",
+        "go-instant-shared": "#60a5fa",
+        "k12-instant-shared": "#60a5fa",
+        "plus-instant-shared": "#60a5fa",
+        "team-instant-shared": "#60a5fa",
+        "edu-instant-shared": "#60a5fa",
+        "enterprise-instant-shared": "#60a5fa"
+    };
+
     // 模型固定显示顺序
     const MODEL_DISPLAY_ORDER = [
         "gpt-5-1-pro",
@@ -283,38 +307,55 @@
     const PLAN_CONFIGS = {
         free: {
             name: "Free",
-            sharedQuotaGroups: {},
+            sharedQuotaGroups: {
+                "free-instant-shared": {
+                    quota: 10,
+                    windowType: "hour5",
+                    displayName: "Free即时共用池"
+                }
+            },
             models: {
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
-                "gpt-5-1-thinking": { quota: 1, windowType: "hour5" },  // 1/5小时
-                "gpt-5-thinking": { quota: 1, windowType: "hour5" },    // 1/5小时
+                "gpt-5-1-thinking": { quota: 1, windowType: "hour5" },   // 1/5小时
+                "gpt-5-thinking": { quota: 1, windowType: "hour5" },     // 1/5小时
                 "o3": { quota: 0, windowType: "weekly" },
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },       // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },         // 名义无限
-                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },  // 名义无限
+                "gpt-5-1": { sharedGroup: "free-instant-shared" },        // 10/5小时
+                "gpt-5": { sharedGroup: "free-instant-shared" },          // 10/5小时
+                "gpt-5-t-mini": { quota: 10, windowType: "daily" },       // 10/天
                 "o4-mini": { quota: 0, windowType: "daily" },
                 "gpt-4o": { quota: 0, windowType: "hour3" },
                 "gpt-4-1": { quota: 0, windowType: "hour3" },
-                "gpt-5-mini": { quota: 10000, windowType: "hour3" }     // 名义无限
+                "gpt-5-mini": { quota: 10000, windowType: "hour3" }      // 名义无限
             }
         },
         go: {
             name: "Go",
-            sharedQuotaGroups: {},
+            sharedQuotaGroups: {
+                "go-thinking-shared": {
+                    quota: 10,
+                    windowType: "hour5",
+                    displayName: "Go思考共用池"
+                },
+                "go-instant-shared": {
+                    quota: 100,
+                    windowType: "hour5",
+                    displayName: "Go即时共用池"
+                }
+            },
             models: {
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
-                "gpt-5-1-thinking": { quota: 10, windowType: "hour5" }, // 10/5小时
-                "gpt-5-thinking": { quota: 10, windowType: "hour5" },   // 10/5小时
+                "gpt-5-1-thinking": { sharedGroup: "go-thinking-shared" }, // 10/5小时
+                "gpt-5-thinking": { sharedGroup: "go-thinking-shared" },   // 10/5小时
                 "o3": { quota: 0, windowType: "weekly" },
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },       // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },         // 名义无限
-                "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },  // 名义无限
+                "gpt-5-1": { sharedGroup: "go-instant-shared" },         // 100/5小时
+                "gpt-5": { sharedGroup: "go-instant-shared" },           // 100/5小时
+                "gpt-5-t-mini": { quota: 100, windowType: "daily" },     // 100/天
                 "o4-mini": { quota: 0, windowType: "daily" },
                 "gpt-4o": { quota: 0, windowType: "hour3" },
                 "gpt-4-1": { quota: 0, windowType: "hour3" },
@@ -323,18 +364,29 @@
         },
         k12_teacher: {
             name: "K12 Teacher",
-            sharedQuotaGroups: {},
+            sharedQuotaGroups: {
+                "k12-thinking-shared": {
+                    quota: 160,
+                    windowType: "hour3",
+                    displayName: "K12思考共用池"
+                },
+                "k12-instant-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "K12即时共用池"
+                }
+            },
             models: {
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
-                "gpt-5-1-thinking": { quota: 0, windowType: "hour3" },
-                "gpt-5-thinking": { quota: 0, windowType: "hour3" },
+                "gpt-5-1-thinking": { sharedGroup: "k12-thinking-shared" }, // 160/3小时
+                "gpt-5-thinking": { sharedGroup: "k12-thinking-shared" },   // 160/3小时
                 "o3": { quota: 0, windowType: "weekly" },
-                "gpt-5-1": { quota: 160, windowType: "hour3" },
-                "gpt-5": { quota: 160, windowType: "hour3" },
-                "gpt-5-t-mini": { quota: 160, windowType: "hour3" },
+                "gpt-5-1": { sharedGroup: "k12-instant-shared" },        // 名义无限
+                "gpt-5": { sharedGroup: "k12-instant-shared" },          // 名义无限
+                "gpt-5-t-mini": { quota: 0, windowType: "daily" },       // 不可用
                 "o4-mini": { quota: 0, windowType: "daily" },
                 "gpt-4o": { quota: 0, windowType: "hour3" },
                 "gpt-4-1": { quota: 0, windowType: "hour3" },
@@ -344,18 +396,27 @@
         plus: {
             name: "Plus",
             sharedQuotaGroups: {
-                // 移除共用额度组，恢复独立配额
+                "plus-thinking-shared": {
+                    quota: 160,
+                    windowType: "hour3",
+                    displayName: "Plus思考共用池"
+                },
+                "plus-instant-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "Plus即时共用池"
+                }
             },
             models: {
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
-                "gpt-5-1-thinking": { quota: 160, windowType: "hour3" }, // 160/3小时
-                "gpt-5-thinking": { quota: 160, windowType: "hour3" },   // 160/3小时
+                "gpt-5-1-thinking": { sharedGroup: "plus-thinking-shared" }, // 160/3小时
+                "gpt-5-thinking": { sharedGroup: "plus-thinking-shared" },   // 160/3小时
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },        // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },          // 名义无限
+                "gpt-5-1": { sharedGroup: "plus-instant-shared" },        // 名义无限
+                "gpt-5": { sharedGroup: "plus-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "o4-mini": { quota: 300, windowType: "daily" },          // 300/天
                 "gpt-4o": { quota: 80, windowType: "hour3" },            // 80/3小时
@@ -366,18 +427,32 @@
         team: {
             name: "Team",
             sharedQuotaGroups: {
-                // 移除共用额度组，恢复独立配额
+                "team-premium-shared": {
+                    quota: 15,
+                    windowType: "monthly",
+                    displayName: "Team高级共用池"
+                },
+                "team-thinking-shared": {
+                    quota: 3000,
+                    windowType: "weekly",
+                    displayName: "Team思考共用池"
+                },
+                "team-instant-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "Team即时共用池"
+                }
             },
             models: {
-                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },    // 15/月
-                "gpt-5-pro": { quota: 15, windowType: "monthly" },      // 15/月
+                "gpt-5-1-pro": { sharedGroup: "team-premium-shared" },
+                "gpt-5-pro": { sharedGroup: "team-premium-shared" },
                 "o3-pro": { quota: 0, windowType: "monthly" },           // 不可用
                 "gpt-4-5": { quota: 0, windowType: "daily" },            // 不可用
-                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000/周
-                "gpt-5-thinking": { quota: 3000, windowType: "weekly" },   // 3000/周
+                "gpt-5-1-thinking": { sharedGroup: "team-thinking-shared" }, // 3000/周
+                "gpt-5-thinking": { sharedGroup: "team-thinking-shared" },   // 3000/周
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },        // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },          // 名义无限
+                "gpt-5-1": { sharedGroup: "team-instant-shared" },        // 名义无限
+                "gpt-5": { sharedGroup: "team-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "o4-mini": { quota: 300, windowType: "daily" },          // 300/天
                 "gpt-4o": { quota: 80, windowType: "hour3" },            // 80/3小时
@@ -388,18 +463,32 @@
         edu: {
             name: "Edu",
             sharedQuotaGroups: {
-                // 移除共用额度组，恢复独立配额
+                "edu-premium-shared": {
+                    quota: 15,
+                    windowType: "monthly",
+                    displayName: "Edu高级共用池"
+                },
+                "edu-thinking-shared": {
+                    quota: 3000,
+                    windowType: "weekly",
+                    displayName: "Edu思考共用池"
+                },
+                "edu-instant-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "Edu即时共用池"
+                }
             },
             models: {
-                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },    // 15/月
-                "gpt-5-pro": { quota: 15, windowType: "monthly" },      // 15/月
+                "gpt-5-1-pro": { sharedGroup: "edu-premium-shared" },
+                "gpt-5-pro": { sharedGroup: "edu-premium-shared" },
                 "o3-pro": { quota: 0, windowType: "monthly" },           // 不可用
                 "gpt-4-5": { quota: 0, windowType: "daily" },            // 不可用
-                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000/周
-                "gpt-5-thinking": { quota: 3000, windowType: "weekly" },   // 3000/周
+                "gpt-5-1-thinking": { sharedGroup: "edu-thinking-shared" }, // 3000/周
+                "gpt-5-thinking": { sharedGroup: "edu-thinking-shared" },   // 3000/周
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },        // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },          // 名义无限
+                "gpt-5-1": { sharedGroup: "edu-instant-shared" },        // 名义无限
+                "gpt-5": { sharedGroup: "edu-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "o4-mini": { quota: 300, windowType: "daily" },          // 300/天
                 "gpt-4o": { quota: 80, windowType: "hour3" },            // 80/3小时
@@ -410,18 +499,32 @@
         enterprise: {
             name: "Enterprise",
             sharedQuotaGroups: {
-                // 移除共用额度组，恢复独立配额
+                "enterprise-premium-shared": {
+                    quota: 15,
+                    windowType: "monthly",
+                    displayName: "Enterprise高级共用池"
+                },
+                "enterprise-thinking-shared": {
+                    quota: 3000,
+                    windowType: "weekly",
+                    displayName: "Enterprise思考共用池"
+                },
+                "enterprise-instant-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "Enterprise即时共用池"
+                }
             },
             models: {
-                "gpt-5-1-pro": { quota: 15, windowType: "monthly" },    // 15/月
-                "gpt-5-pro": { quota: 15, windowType: "monthly" },      // 15/月
-                "o3-pro": { quota: 20, windowType: "monthly" },         // 20/月
+                "gpt-5-1-pro": { sharedGroup: "enterprise-premium-shared" },    // 15/月
+                "gpt-5-pro": { sharedGroup: "enterprise-premium-shared" },      // 15/月
+                "o3-pro": { quota: 0, windowType: "monthly" },          // 不可用
                 "gpt-4-5": { quota: 0, windowType: "daily" },            // 不可用
-                "gpt-5-1-thinking": { quota: 3000, windowType: "weekly" }, // 3000/周
-                "gpt-5-thinking": { quota: 3000, windowType: "weekly" },   // 3000/周
+                "gpt-5-1-thinking": { sharedGroup: "enterprise-thinking-shared" }, // 3000/周
+                "gpt-5-thinking": { sharedGroup: "enterprise-thinking-shared" },   // 3000/周
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },        // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },          // 名义无限
+                "gpt-5-1": { sharedGroup: "enterprise-instant-shared" },        // 名义无限
+                "gpt-5": { sharedGroup: "enterprise-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "o4-mini": { quota: 300, windowType: "daily" },          // 300/天
                 "gpt-4o": { quota: 80, windowType: "hour3" },            // 80/3小时
@@ -431,17 +534,33 @@
         },
         pro: {
             name: "Pro",
-            sharedQuotaGroups: {},
+            sharedQuotaGroups: {
+                "pro-premium-shared": {
+                    quota: 100,
+                    windowType: "daily",
+                    displayName: "Pro高级共用池" // gpt-5-1-pro/gpt-5-pro/o3-pro
+                },
+                "pro-thinking-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "Pro思考共用池" // gpt-5-1-thinking/gpt-5-thinking
+                },
+                "pro-instant-shared": {
+                    quota: 10000,
+                    windowType: "hour3",
+                    displayName: "Pro即时共用池" // gpt-5-1/gpt-5
+                }
+            },
             models: {
-                "gpt-5-1-pro": { quota: 100, windowType: "daily" },      // 100/天
-                "gpt-5-pro": { quota: 100, windowType: "daily" },        // 100/天
-                "o3-pro": { quota: 100, windowType: "daily" },           // 100/天
+                "gpt-5-1-pro": { sharedGroup: "pro-premium-shared" },
+                "gpt-5-pro": { sharedGroup: "pro-premium-shared" },
+                "o3-pro": { sharedGroup: "pro-premium-shared" },
                 "gpt-4-5": { quota: 100, windowType: "daily" },          // 100/天
-                "gpt-5-1-thinking": { quota: 10000, windowType: "hour3" }, // 名义无限
-                "gpt-5-thinking": { quota: 10000, windowType: "hour3" },   // 名义无限
+                "gpt-5-1-thinking": { sharedGroup: "pro-thinking-shared" },
+                "gpt-5-thinking": { sharedGroup: "pro-thinking-shared" },
                 "o3": { quota: 10000, windowType: "hour3" },             // 名义无限
-                "gpt-5-1": { quota: 10000, windowType: "hour3" },        // 名义无限
-                "gpt-5": { quota: 10000, windowType: "hour3" },          // 名义无限
+                "gpt-5-1": { sharedGroup: "pro-instant-shared" },
+                "gpt-5": { sharedGroup: "pro-instant-shared" },
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
                 "o4-mini": { quota: 10000, windowType: "hour3" },        // 名义无限
                 "gpt-4o": { quota: 10000, windowType: "hour3" },         // 名义无限
@@ -1252,6 +1371,8 @@
                             }
                             return r;
                         });
+                        // 共享请求不再持久化，转为显示时临时汇总
+                        group.requests = [];
                     }
                 });
             }
@@ -2376,6 +2497,34 @@
         return createUsageModelRow(model, modelKey, row);
     }
 
+    // 汇总共用组用量（不持久化），仅用于显示层的配额/窗口计算
+    function collectSharedGroupUsage(groupId, now) {
+        const group = usageData.sharedQuotaGroups[groupId];
+        if (!group) return null;
+
+        const windowType = group.windowType || "daily";
+        const windowDuration = TIME_WINDOWS[windowType];
+        const activeRequests = [];
+
+        Object.entries(usageData.models || {}).forEach(([key, model]) => {
+            if (model.sharedGroup === groupId && Array.isArray(model.requests)) {
+                model.requests
+                    .map(tsOf)
+                    .filter(ts => typeof ts === "number" && !Number.isNaN(ts) && now - ts < windowDuration)
+                    .forEach(ts => activeRequests.push({ ts, modelKey: key }));
+            }
+        });
+
+        activeRequests.sort((a, b) => a.ts - b.ts);
+
+        return {
+            group,
+            windowType,
+            windowDuration,
+            activeRequests
+        };
+    }
+
     function createSettingsModelRow(model, modelKey, row) {
         // Model ID cell
         const keyLabel = document.createElement("div");
@@ -2467,35 +2616,30 @@
         let lastRequestTime = "never";
         let windowEndInfo = "";
         
-        // 检查模型是否使用共用额度组
+        // 检查模型是否使用共用额度组（仅显示层汇总，不跨模型写入共享池）
         if (model.sharedGroup) {
             const groupId = model.sharedGroup;
-            const group = usageData.sharedQuotaGroups[groupId];
-            if (!group) {
+            const sharedUsage = collectSharedGroupUsage(groupId, now);
+            if (!sharedUsage) {
                 console.warn(`[monitor] Shared quota group "${groupId}" not found for model "${modelKey}"`);
-                // 如果找不到共用组，使用默认值
                 quota = 0;
                 windowType = "daily";
             } else {
-                // 使用共用额度组的数据
+                const { group, windowType: sharedWindowType, activeRequests } = sharedUsage;
                 quota = group.quota;
-                windowType = group.windowType;
-                
-                // 过滤共用组在时间窗口内的请求
-                const windowDuration = TIME_WINDOWS[windowType];
-                const activeRequests = group.requests.filter(req => now - tsOf(req) < windowDuration);
-                
+                windowType = sharedWindowType;
+
                 count = activeRequests.length;
-                
+
                 // 获取最后请求时间（仅显示当前模型的）
-                const modelRequests = activeRequests.filter(req => req.modelId === modelKey);
+                const modelRequests = activeRequests.filter(req => req.modelKey === modelKey);
                 if (modelRequests.length > 0) {
-                    lastRequestTime = formatTimeAgo(Math.max(...modelRequests.map(req => tsOf(req))));
+                    lastRequestTime = formatTimeAgo(Math.max(...modelRequests.map(req => req.ts)));
                 }
-                
-                // 计算窗口重置时间
+
+                // 计算窗口重置时间（以共享池最早请求为准）
                 if (count > 0 && usageData.showWindowResetTime) {
-                    const oldestActiveTimestamp = Math.min(...activeRequests.map(req => tsOf(req)));
+                    const oldestActiveTimestamp = Math.min(...activeRequests.map(req => req.ts));
                     const windowEnd = getWindowEnd(oldestActiveTimestamp, windowType);
                     if (windowEnd > now) {
                         windowEndInfo = `Window resets in: ${formatTimeLeft(windowEnd)}`;
@@ -2538,22 +2682,13 @@
 
         const modelName = document.createElement("span");
         modelName.textContent = modelKey;
-        modelNameContainer.appendChild(modelName);
-        
-        // 如果使用共用额度，添加共享标识
+        let sharedColor = null;
         if (model.sharedGroup) {
-            const sharedBadge = document.createElement("span");
-            sharedBadge.style.marginLeft = "4px";
-            sharedBadge.style.fontSize = "10px";
-            sharedBadge.style.padding = "1px 3px";
-            sharedBadge.style.borderRadius = "3px";
-            sharedBadge.style.backgroundColor = COLORS.warning;
-            sharedBadge.style.color = COLORS.background;
-            sharedBadge.style.fontWeight = "bold";
-            sharedBadge.textContent = "共享";
-            sharedBadge.title = `与其他模型共享额度：${usageData.sharedQuotaGroups[model.sharedGroup]?.displayName || model.sharedGroup}`;
-            modelNameContainer.appendChild(sharedBadge);
+            sharedColor = SHARED_GROUP_COLORS[model.sharedGroup] || COLORS.warning;
+            modelName.style.color = sharedColor;
+            modelName.title = `共享组：${usageData.sharedQuotaGroups[model.sharedGroup]?.displayName || model.sharedGroup}`;
         }
+        modelNameContainer.appendChild(modelName);
 
         // Add window type badge
         const windowBadge = document.createElement("span");
@@ -2588,6 +2723,9 @@
 
         // Usage cell
         const usageValue = document.createElement("div");
+        if (sharedColor) {
+            usageValue.style.color = sharedColor;
+        }
 
         // 处理不同的配额显示
         let quotaDisplay;
@@ -2604,12 +2742,7 @@
         }
 
         // 显示使用情况
-        if (model.sharedGroup) {
-            // 共享额度显示：显示全部使用量
-            usageValue.innerHTML = `${count} / ${quotaDisplay} <span style="font-size: 10px; color: ${COLORS.secondaryText};">(共享)</span>`;
-        } else {
-            usageValue.textContent = `${count} / ${quotaDisplay}`;
-        }
+        usageValue.textContent = `${count} / ${quotaDisplay}`;
 
         // 根据设置决定是否显示窗口刷新时间
         if (windowEndInfo && usageData.showWindowResetTime) {
@@ -2711,31 +2844,11 @@
                 }
             });
 
-            // 清理旧的共用额度组（如果存在的话）
-            if (data.sharedQuotaGroups) {
-                Object.entries(data.sharedQuotaGroups).forEach(([groupId, group]) => {
-                    if (group.requests && group.models) {
-                        group.models.forEach(modelId => {
-                            if (group.requests.length > 0) {
-                                const modelRequests = group.requests.filter(req => req.modelId === modelId);
-                                if (modelRequests.length > 0) {
-                                    if (!existingUsageData[modelId]) {
-                                        existingUsageData[modelId] = [];
-                                    }
-                                    existingUsageData[modelId].push(...modelRequests.map(req => tsOf(req)));
-                                }
-                            }
-                        });
-                    }
-                });
-            }
-
             // 初始化共用额度组
             data.sharedQuotaGroups = {};
             if (planConfig.sharedQuotaGroups) {
                 Object.entries(planConfig.sharedQuotaGroups).forEach(([groupId, groupConfig]) => {
                     data.sharedQuotaGroups[groupId] = {
-                        requests: [],
                         quota: groupConfig.quota,
                         windowType: groupConfig.windowType,
                         models: groupConfig.models,
@@ -2753,19 +2866,6 @@
 
                 if (config.sharedGroup) {
                     newModels[modelKey].sharedGroup = config.sharedGroup;
-
-                    if (existingUsageData[modelKey] && existingUsageData[modelKey].length > 0) {
-                        const groupId = config.sharedGroup;
-                        if (data.sharedQuotaGroups[groupId]) {
-                            existingUsageData[modelKey].forEach(req => {
-                                data.sharedQuotaGroups[groupId].requests.push({
-                                    t: tsOf(req),
-                                    modelId: modelKey
-                                });
-                            });
-                        }
-                        newModels[modelKey].requests = [];
-                    }
                 } else {
                     newModels[modelKey].quota = config.quota;
                     newModels[modelKey].windowType = config.windowType;
@@ -2893,13 +2993,12 @@
             let isAvailable = false;
             
             if (model.sharedGroup) {
-                // 共用额度模型
-                const group = usageData.sharedQuotaGroups[model.sharedGroup];
-                if (group) {
-                    const windowDuration = TIME_WINDOWS[group.windowType];
-                    activeCount = group.requests.filter(req => now - tsOf(req) < windowDuration).length;
-                    hasBeenUsed = group.requests.length > 0;
-                    isAvailable = group.quota > 0 || (group.quota === 0 && currentPlan === "pro");
+                // 共用额度模型（显示层汇总）
+                const sharedUsage = collectSharedGroupUsage(model.sharedGroup, now);
+                if (sharedUsage) {
+                    activeCount = sharedUsage.activeRequests.length;
+                    hasBeenUsed = sharedUsage.activeRequests.length > 0;
+                    isAvailable = sharedUsage.group.quota > 0 || (sharedUsage.group.quota === 0 && currentPlan === "pro");
                 } else {
                     // 如果找不到共用组，设为不可用
                     isAvailable = false;
@@ -3787,36 +3886,16 @@
             };
         }
 
-        // 检查模型是否使用共用额度组
-        const model = usageData.models[modelId];
-        if (model.sharedGroup) {
-            // 使用共用额度组记录
-            const groupId = model.sharedGroup;
-            if (!usageData.sharedQuotaGroups[groupId]) {
-                console.warn(`[monitor] Shared quota group "${groupId}" not found for model "${modelId}"`);
-                return;
-            }
-            
-            // 在共用额度组中记录使用
-            usageData.sharedQuotaGroups[groupId].requests.push({
-                t: Date.now(),
-                modelId: modelId // 记录是哪个模型使用的
-            });
-            
-            console.debug(`[monitor] Recorded usage for model "${modelId}" in shared group "${groupId}"`);
-        } else {
-            // 独立额度记录
-            usageData.models[modelId].requests.push(Date.now());
-            
-            console.debug(`[monitor] Recorded individual usage for model "${modelId}"`);
-        }
+        // 统一按模型自身记录，用量聚合仅在显示层完成
+        usageData.models[modelId].requests.push(Date.now());
+        
+        console.debug(`[monitor] Recorded usage for model: ${modelId}`);
 
         Storage.set(usageData);
         // Reload to apply any cleanup/migrations before rendering
         usageData = Storage.get();
         updateUI();
         
-        console.log(`[monitor] Recorded usage for model: ${modelId}`);
     }
 
     // Model Usage Tracking
@@ -3841,29 +3920,9 @@
             };
         }
 
-        // 检查模型是否使用共用额度组
-        const model = usageData.models[modelId];
-        if (model.sharedGroup) {
-            // 使用共用额度组记录
-            const groupId = model.sharedGroup;
-            if (!usageData.sharedQuotaGroups[groupId]) {
-                console.warn(`[monitor] Shared quota group "${groupId}" not found for model "${modelId}"`);
-                return;
-            }
-            
-            // 在共用额度组中记录使用
-            usageData.sharedQuotaGroups[groupId].requests.push({
-                t: Date.now(),
-                modelId: modelId // 记录是哪个模型使用的
-            });
-            
-            console.debug(`[monitor] Recorded usage for model "${modelId}" in shared group "${groupId}"`);
-        } else {
-            // 独立额度记录
-            usageData.models[modelId].requests.push(Date.now());
-            
-            console.debug(`[monitor] Recorded individual usage for model "${modelId}"`);
-        }
+        // 始终按模型维度记录，用量聚合在显示层完成
+        usageData.models[modelId].requests.push(Date.now());
+        console.debug(`[monitor] Recorded usage for model "${modelId}"`);
 
         Storage.set(usageData);
         // Reload to apply any cleanup/migrations before rendering
