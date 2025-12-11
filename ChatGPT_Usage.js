@@ -197,10 +197,10 @@
             console.debug('[monitor] Redirecting long alpha id -> alpha');
             return 'alpha';
         }
-        // auto 等价于 gpt-5-2-instant（当前主力即时模型）
+        // auto 等价于 gpt-5-2（需要走思考检测后再路由到 instant/thinking）
         if (originalModelId === 'auto') {
-            console.debug('[monitor] Redirecting model auto -> gpt-5-2-instant');
-            return 'gpt-5-2-instant';
+            console.debug('[monitor] Redirecting model auto -> gpt-5-2');
+            return 'gpt-5-2';
         }
         // 在非 Pro 套餐下，gpt-4-5 重定向到 gpt-5-2-instant（沿用 instant 逻辑，不计入 thinking）
         try {
@@ -3741,18 +3741,28 @@
         } else if (effectiveModelId === "gpt-5-1") {
             console.log('[monitor] Starting GPT-5-1 thinking detection timer...');
             startGPT5ThinkingTimer('gpt-5-1');
+        } else if (effectiveModelId === "gpt-5-2") {
+            console.log('[monitor] Starting GPT-5-2 thinking detection timer...');
+            startGPT5ThinkingTimer('gpt-5-2');
         } else {
             // For all other models, record immediately as themselves
             recordModelUsageByModelId(effectiveModelId);
         }
     }
     
-    // Start timer to detect GPT-5/GPT-5-1 thinking mode
+    // Start timer to detect GPT-5/5-1/5-2 thinking mode
     function startGPT5ThinkingTimer(baseModelKey = 'gpt-5') {
         // Clear any existing timer
         if (gpt5WaitingTimer) {
             clearInterval(gpt5WaitingTimer);
         }
+
+        // Map base key to the configured instant/thinking keys
+        const instantKey = baseModelKey === 'gpt-5-2' ? 'gpt-5-2-instant' : baseModelKey;
+        const thinkingKey =
+            baseModelKey === 'gpt-5' ? 'gpt-5-thinking' :
+            baseModelKey === 'gpt-5-2' ? 'gpt-5-2-thinking' :
+            (baseModelKey + '-thinking');
         
         isWaitingForGPT5Response = true;
         let attempts = 0;
@@ -3769,7 +3779,7 @@
             if (hasDirectResponse && !hasDetectedResponse) {
                 // Direct response detected - count as gpt-5 (normal mode)
                 console.log('[monitor] Direct response detected after', attempts * 300, 'ms');
-                recordModelUsageByModelId(baseModelKey);
+                recordModelUsageByModelId(instantKey);
                 clearInterval(gpt5WaitingTimer);
                 isWaitingForGPT5Response = false;
                 hasDetectedResponse = true;
@@ -3784,7 +3794,6 @@
                 if (hasThinkingIndicator && !hasDetectedResponse) {
                     // Thinking mode detected - count as gpt-5-thinking
                     console.log('[monitor] Thinking mode detected after', Date.now() - startTime, 'ms');
-                    const thinkingKey = baseModelKey === 'gpt-5' ? 'gpt-5-thinking' : (baseModelKey + '-thinking');
                     recordModelUsageByModelId(thinkingKey);
                     clearInterval(gpt5WaitingTimer);
                     isWaitingForGPT5Response = false;
@@ -3796,7 +3805,7 @@
             // Timeout - assume it's normal mode
             if (attempts >= maxAttempts && !hasDetectedResponse) {
                 console.log('[monitor] Timeout reached, assuming normal mode');
-                recordModelUsageByModelId(baseModelKey);
+                recordModelUsageByModelId(instantKey);
                 clearInterval(gpt5WaitingTimer);
                 isWaitingForGPT5Response = false;
                 hasDetectedResponse = true;
@@ -3841,12 +3850,18 @@
     
     // —— 用结构+稳定态判定直接回复（替换原来的长度阈值方法）
     function checkForDirectResponse(baseModelKey = 'gpt-5') {
-        // 只看最新一条 GPT-5/GPT-5-1 助手消息
+        // 只看最新一条 GPT-5/5-1/5-2 助手消息
         let candidates = [];
         if (baseModelKey === 'gpt-5-1') {
             candidates = [
                 ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5-1"]'),
                 ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5.1"]')
+            ];
+        } else if (baseModelKey === 'gpt-5-2') {
+            candidates = [
+                ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5-2"]'),
+                ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5.2"]'),
+                ...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5-2-instant"]')
             ];
         } else {
             candidates = [...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug="gpt-5"]')];
