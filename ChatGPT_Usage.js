@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.11.0
+// @version      3.11.1
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -3717,7 +3717,7 @@
         ) && checkForThinkingIndicator();
     }
     
-    // Function to handle conversation requests (GPT-5 special case)
+    // Function to handle conversation requests (GPT-5-2 auto special case)
     function handleConversationRequest(modelId) {
         // Apply redirection rules (auto, gpt-4-5 etc.)
         const effectiveModelId = resolveRedirectedModelId(modelId);
@@ -3734,23 +3734,18 @@
             return;
         }
         
-        // Only GPT-5 series needs thinking detection
-        if (effectiveModelId === "gpt-5") {
-            console.log('[monitor] Starting GPT-5 thinking detection timer...');
-            startGPT5ThinkingTimer('gpt-5');
-        } else if (effectiveModelId === "gpt-5-1") {
-            console.log('[monitor] Starting GPT-5-1 thinking detection timer...');
-            startGPT5ThinkingTimer('gpt-5-1');
-        } else if (effectiveModelId === "gpt-5-2") {
+        // Only GPT-5-2 "auto" needs thinking detection now
+        if (effectiveModelId === "gpt-5-2") {
             console.log('[monitor] Starting GPT-5-2 thinking detection timer...');
             startGPT5ThinkingTimer('gpt-5-2');
-        } else {
-            // For all other models, record immediately as themselves
-            recordModelUsageByModelId(effectiveModelId);
+            return;
         }
+
+        // For all other models, record immediately as themselves
+        recordModelUsageByModelId(effectiveModelId);
     }
     
-    // Start timer to detect GPT-5/5-1/5-2 thinking mode
+    // Start timer to detect GPT-5-2 thinking mode
     function startGPT5ThinkingTimer(baseModelKey = 'gpt-5') {
         // Clear any existing timer
         if (gpt5WaitingTimer) {
