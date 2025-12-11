@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.10.0
+// @version      3.11.0
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -197,22 +197,22 @@
             console.debug('[monitor] Redirecting long alpha id -> alpha');
             return 'alpha';
         }
-        // auto 等价于 gpt-5（需要走思考检测）
+        // auto 等价于 gpt-5-2-instant（当前主力即时模型）
         if (originalModelId === 'auto') {
-            console.debug('[monitor] Redirecting model auto -> gpt-5');
-            return 'gpt-5';
+            console.debug('[monitor] Redirecting model auto -> gpt-5-2-instant');
+            return 'gpt-5-2-instant';
         }
-        // 在非 Pro 套餐下，gpt-4-5 重定向到 gpt-5-1（沿用 instant 逻辑，不计入 thinking）
+        // 在非 Pro 套餐下，gpt-4-5 重定向到 gpt-5-2-instant（沿用 instant 逻辑，不计入 thinking）
         try {
             const plan = (usageData && usageData.planType) || 'team';
             if (originalModelId === 'gpt-4-5' && plan !== 'pro') {
-                console.debug('[monitor] Redirecting model gpt-4-5 -> gpt-5-1 (instant) for plan', plan);
-                return 'gpt-5-1-instant';
+                console.debug('[monitor] Redirecting model gpt-4-5 -> gpt-5-2-instant for plan', plan);
+                return 'gpt-5-2-instant';
             }
-            // 非 Pro 套餐下，o3-pro 重定向到 gpt-5-1（instant，不计思考）
+            // 非 Pro 套餐下，o3-pro 重定向到 gpt-5-2-instant（instant，不计思考）
             if (originalModelId === 'o3-pro' && plan !== 'pro') {
-                console.debug('[monitor] Redirecting model o3-pro -> gpt-5-1 for plan', plan);
-                return 'gpt-5-1-instant';
+                console.debug('[monitor] Redirecting model o3-pro -> gpt-5-2-instant for plan', plan);
+                return 'gpt-5-2-instant';
             }
         } catch (e) { /* noop */ }
         return originalModelId;
@@ -240,13 +240,16 @@
             // "group-id": { requests: [], quota: number, windowType: string, models: ["model1", "model2"] }
         },
         models: {
+            "gpt-5-2-pro": { requests: [], quota: 15, windowType: "monthly" },   // 15次/月
             "gpt-5-1-pro": { requests: [], quota: 15, windowType: "monthly" },   // 15次/月
             "gpt-5-pro": { requests: [], quota: 15, windowType: "monthly" },     // 15次/月
             "o3-pro": { requests: [], quota: 0, windowType: "monthly" },          // 不可用
             "gpt-4-5": { requests: [], quota: 0, windowType: "daily" },           // 不可用
+            "gpt-5-2-thinking": { requests: [], quota: 3000, windowType: "weekly" }, // 3000/周
             "gpt-5-1-thinking": { requests: [], quota: 3000, windowType: "weekly" }, // 3000/周
             "gpt-5-thinking": { requests: [], quota: 3000, windowType: "weekly" },   // 3000/周
             "o3": { requests: [], quota: 100, windowType: "weekly" },             // 100/周
+            "gpt-5-2-instant": { requests: [], quota: 10000, windowType: "hour3" },  // 名义无限（10000/3h）
             "gpt-5-1": { requests: [], quota: 10000, windowType: "hour3" },       // 名义无限（10000/3h）
             "gpt-5": { requests: [], quota: 10000, windowType: "hour3" },         // 名义无限（10000/3h）
             "gpt-5-t-mini": { requests: [], quota: 10000, windowType: "hour3" },  // 名义无限（10000/3h）
@@ -283,20 +286,24 @@
 
     // 模型固定显示顺序
     const MODEL_DISPLAY_ORDER = [
+        // 5.2 系列替换 5.1 系列位置；5.1 下移到原 5.0 位置；5.0 置底
+        "gpt-5-2-pro",
         "gpt-5-1-pro",
         "gpt-5-pro",
         "o3-pro",
         "gpt-4-5",
+        "gpt-5-2-thinking",
         "gpt-5-1-thinking",
         "gpt-5-thinking",
         "o3",
+        "gpt-5-2-instant",
         "gpt-5-1",
-        "gpt-5",
         "gpt-5-t-mini",
         "o4-mini",
         "gpt-4o",
         "gpt-4-1",
         "gpt-5-mini",
+        "gpt-5",
         "alpha" // 其他模型占位
     ];
 
@@ -315,13 +322,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
+                "gpt-5-2-thinking": { quota: 1, windowType: "hour5" },   // 1/5小时
                 "gpt-5-1-thinking": { quota: 1, windowType: "hour5" },   // 1/5小时
                 "gpt-5-thinking": { quota: 1, windowType: "hour5" },     // 1/5小时
                 "o3": { quota: 0, windowType: "weekly" },
+                "gpt-5-2-instant": { sharedGroup: "free-instant-shared" }, // 10/5小时
                 "gpt-5-1": { sharedGroup: "free-instant-shared" },        // 10/5小时
                 "gpt-5": { sharedGroup: "free-instant-shared" },          // 10/5小时
                 "gpt-5-t-mini": { quota: 10, windowType: "daily" },       // 10/天
@@ -346,13 +356,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
+                "gpt-5-2-thinking": { sharedGroup: "go-thinking-shared" }, // 10/5小时
                 "gpt-5-1-thinking": { sharedGroup: "go-thinking-shared" }, // 10/5小时
                 "gpt-5-thinking": { sharedGroup: "go-thinking-shared" },   // 10/5小时
                 "o3": { quota: 0, windowType: "weekly" },
+                "gpt-5-2-instant": { sharedGroup: "go-instant-shared" },  // 100/5小时
                 "gpt-5-1": { sharedGroup: "go-instant-shared" },         // 100/5小时
                 "gpt-5": { sharedGroup: "go-instant-shared" },           // 100/5小时
                 "gpt-5-t-mini": { quota: 100, windowType: "daily" },     // 100/天
@@ -377,13 +390,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
+                "gpt-5-2-thinking": { sharedGroup: "k12-thinking-shared" }, // 160/3小时
                 "gpt-5-1-thinking": { sharedGroup: "k12-thinking-shared" }, // 160/3小时
                 "gpt-5-thinking": { sharedGroup: "k12-thinking-shared" },   // 160/3小时
                 "o3": { quota: 0, windowType: "weekly" },
+                "gpt-5-2-instant": { sharedGroup: "k12-instant-shared" }, // 名义无限
                 "gpt-5-1": { sharedGroup: "k12-instant-shared" },        // 名义无限
                 "gpt-5": { sharedGroup: "k12-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 0, windowType: "daily" },       // 不可用
@@ -408,13 +424,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-1-pro": { quota: 0, windowType: "monthly" },
                 "gpt-5-pro": { quota: 0, windowType: "monthly" },
                 "o3-pro": { quota: 0, windowType: "monthly" },
                 "gpt-4-5": { quota: 0, windowType: "daily" },
+                "gpt-5-2-thinking": { sharedGroup: "plus-thinking-shared" }, // 160/3小时
                 "gpt-5-1-thinking": { sharedGroup: "plus-thinking-shared" }, // 160/3小时
                 "gpt-5-thinking": { sharedGroup: "plus-thinking-shared" },   // 160/3小时
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
+                "gpt-5-2-instant": { sharedGroup: "plus-instant-shared" }, // 名义无限
                 "gpt-5-1": { sharedGroup: "plus-instant-shared" },        // 名义无限
                 "gpt-5": { sharedGroup: "plus-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
@@ -444,13 +463,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { sharedGroup: "team-premium-shared" },
                 "gpt-5-1-pro": { sharedGroup: "team-premium-shared" },
                 "gpt-5-pro": { sharedGroup: "team-premium-shared" },
                 "o3-pro": { quota: 0, windowType: "monthly" },           // 不可用
                 "gpt-4-5": { quota: 0, windowType: "daily" },            // 不可用
+                "gpt-5-2-thinking": { sharedGroup: "team-thinking-shared" }, // 3000/周
                 "gpt-5-1-thinking": { sharedGroup: "team-thinking-shared" }, // 3000/周
                 "gpt-5-thinking": { sharedGroup: "team-thinking-shared" },   // 3000/周
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
+                "gpt-5-2-instant": { sharedGroup: "team-instant-shared" }, // 名义无限
                 "gpt-5-1": { sharedGroup: "team-instant-shared" },        // 名义无限
                 "gpt-5": { sharedGroup: "team-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
@@ -480,13 +502,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { sharedGroup: "edu-premium-shared" },
                 "gpt-5-1-pro": { sharedGroup: "edu-premium-shared" },
                 "gpt-5-pro": { sharedGroup: "edu-premium-shared" },
                 "o3-pro": { quota: 0, windowType: "monthly" },           // 不可用
                 "gpt-4-5": { quota: 0, windowType: "daily" },            // 不可用
+                "gpt-5-2-thinking": { sharedGroup: "edu-thinking-shared" }, // 3000/周
                 "gpt-5-1-thinking": { sharedGroup: "edu-thinking-shared" }, // 3000/周
                 "gpt-5-thinking": { sharedGroup: "edu-thinking-shared" },   // 3000/周
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
+                "gpt-5-2-instant": { sharedGroup: "edu-instant-shared" }, // 名义无限
                 "gpt-5-1": { sharedGroup: "edu-instant-shared" },        // 名义无限
                 "gpt-5": { sharedGroup: "edu-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
@@ -516,13 +541,16 @@
                 }
             },
             models: {
+                "gpt-5-2-pro": { sharedGroup: "enterprise-premium-shared" }, // 15/月
                 "gpt-5-1-pro": { sharedGroup: "enterprise-premium-shared" },    // 15/月
                 "gpt-5-pro": { sharedGroup: "enterprise-premium-shared" },      // 15/月
                 "o3-pro": { quota: 0, windowType: "monthly" },          // 不可用
                 "gpt-4-5": { quota: 0, windowType: "daily" },            // 不可用
+                "gpt-5-2-thinking": { sharedGroup: "enterprise-thinking-shared" }, // 3000/周
                 "gpt-5-1-thinking": { sharedGroup: "enterprise-thinking-shared" }, // 3000/周
                 "gpt-5-thinking": { sharedGroup: "enterprise-thinking-shared" },   // 3000/周
                 "o3": { quota: 100, windowType: "weekly" },              // 100/周
+                "gpt-5-2-instant": { sharedGroup: "enterprise-instant-shared" }, // 名义无限
                 "gpt-5-1": { sharedGroup: "enterprise-instant-shared" },        // 名义无限
                 "gpt-5": { sharedGroup: "enterprise-instant-shared" },          // 名义无限
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
@@ -538,27 +566,30 @@
                 "pro-premium-shared": {
                     quota: 100,
                     windowType: "daily",
-                    displayName: "Pro高级共用池" // gpt-5-1-pro/gpt-5-pro/o3-pro
+                    displayName: "Pro高级共用池" // gpt-5-2-pro/gpt-5-1-pro/gpt-5-pro/o3-pro
                 },
                 "pro-thinking-shared": {
                     quota: 10000,
                     windowType: "hour3",
-                    displayName: "Pro思考共用池" // gpt-5-1-thinking/gpt-5-thinking
+                    displayName: "Pro思考共用池" // gpt-5-2-thinking/gpt-5-1-thinking/gpt-5-thinking
                 },
                 "pro-instant-shared": {
                     quota: 10000,
                     windowType: "hour3",
-                    displayName: "Pro即时共用池" // gpt-5-1/gpt-5
+                    displayName: "Pro即时共用池" // gpt-5-2-instant/gpt-5-1/gpt-5
                 }
             },
             models: {
+                "gpt-5-2-pro": { sharedGroup: "pro-premium-shared" },
                 "gpt-5-1-pro": { sharedGroup: "pro-premium-shared" },
                 "gpt-5-pro": { sharedGroup: "pro-premium-shared" },
                 "o3-pro": { sharedGroup: "pro-premium-shared" },
                 "gpt-4-5": { quota: 100, windowType: "daily" },          // 100/天
+                "gpt-5-2-thinking": { sharedGroup: "pro-thinking-shared" },
                 "gpt-5-1-thinking": { sharedGroup: "pro-thinking-shared" },
                 "gpt-5-thinking": { sharedGroup: "pro-thinking-shared" },
                 "o3": { quota: 10000, windowType: "hour3" },             // 名义无限
+                "gpt-5-2-instant": { sharedGroup: "pro-instant-shared" },
                 "gpt-5-1": { sharedGroup: "pro-instant-shared" },
                 "gpt-5": { sharedGroup: "pro-instant-shared" },
                 "gpt-5-t-mini": { quota: 10000, windowType: "hour3" },   // 名义无限
@@ -1176,10 +1207,12 @@
             if (usageData.models && usageData.models["o4-mini-high"]) {
                 delete usageData.models["o4-mini-high"];
             }
-            const gpt51ProAllowedPlans = ["team", "edu", "enterprise", "pro"];
-            const isGpt51ProAllowed = gpt51ProAllowedPlans.includes(usageData.planType);
-            if (!isGpt51ProAllowed && usageData.models && usageData.models["gpt-5-1-pro"]) {
-                delete usageData.models["gpt-5-1-pro"];
+            const gpt5ProAllowedPlans = ["team", "edu", "enterprise", "pro"];
+            const isGpt5ProAllowed = gpt5ProAllowedPlans.includes(usageData.planType);
+            if (!isGpt5ProAllowed && usageData.models) {
+                ["gpt-5-2-pro", "gpt-5-1-pro"].forEach(key => {
+                    if (usageData.models[key]) delete usageData.models[key];
+                });
             }
             if (usageData.deepResearch) {
                 delete usageData.deepResearch;
@@ -1190,6 +1223,9 @@
             const newModels = [
                 "gpt-5",
                 "gpt-5-thinking",
+                "gpt-5-2-instant",
+                "gpt-5-2-thinking",
+                "gpt-5-2-pro",
                 "gpt-5-1",
                 "gpt-5-1-thinking",
                 "gpt-5-pro",
@@ -1203,10 +1239,12 @@
                 "gpt-5-t-mini",
                 "gpt-5-mini"
             ];
-            // 非允许套餐不添加 gpt-5-1-pro
-            if (!isGpt51ProAllowed) {
-                const idx = newModels.indexOf("gpt-5-1-pro");
-                if (idx !== -1) newModels.splice(idx, 1);
+            // 非允许套餐不添加 gpt-5-2-pro / gpt-5-1-pro
+            if (!isGpt5ProAllowed) {
+                ["gpt-5-2-pro", "gpt-5-1-pro"].forEach(m => {
+                    const idx = newModels.indexOf(m);
+                    if (idx !== -1) newModels.splice(idx, 1);
+                });
             }
             newModels.forEach(modelId => {
                 if (!usageData.models[modelId]) {
@@ -1218,6 +1256,18 @@
                             windowType: "hour3"
                         };
                     } else if (modelId === "gpt-5-thinking") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 3000,
+                            windowType: "weekly"
+                        };
+                    } else if (modelId === "gpt-5-2-instant") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 10000,
+                            windowType: "hour3"
+                        };
+                    } else if (modelId === "gpt-5-2-thinking") {
                         usageData.models[modelId] = {
                             requests: [],
                             quota: 3000,
@@ -1236,6 +1286,12 @@
                             windowType: "weekly"
                         };
                     } else if (modelId === "gpt-5-pro") {
+                        usageData.models[modelId] = {
+                            requests: [],
+                            quota: 15,
+                            windowType: "monthly"
+                        };
+                    } else if (modelId === "gpt-5-2-pro") {
                         usageData.models[modelId] = {
                             requests: [],
                             quota: 15,
@@ -1783,17 +1839,20 @@
         return report;
     }
 
-    // 将未知模型（未在我们预设列表中的）合并到 gpt-5-1-instant（仅用于 HTML 导出展示，不改动存储）
+    // 将未知模型（未在我们预设列表中的）合并到 gpt-5-2-instant（仅用于 HTML 导出展示，不改动存储）
     function mergeUnknownModelsForHtml(report) {
         try {
             const KNOWN = new Set([
                 // 采用固定显示顺序中的模型
                 ...MODEL_DISPLAY_ORDER,
                 // 再补充兼容显示顺序外但“已知”的模型键
-                'gpt-5', 'gpt-5-thinking', 'gpt-5-1', 'gpt-5-1-thinking', 'gpt-5-1-instant', 'alpha'
+                'gpt-5', 'gpt-5-thinking',
+                'gpt-5-2-instant', 'gpt-5-2-thinking', 'gpt-5-2-pro',
+                'gpt-5-1', 'gpt-5-1-thinking', 'gpt-5-1-instant',
+                'alpha'
             ]);
 
-            const targetKey = 'gpt-5-1-instant';
+            const targetKey = 'gpt-5-2-instant';
             if (!report.modelBreakdown[targetKey]) report.modelBreakdown[targetKey] = 0;
 
             const unknownKeys = Object.keys(report.modelBreakdown).filter(k => !KNOWN.has(k));
