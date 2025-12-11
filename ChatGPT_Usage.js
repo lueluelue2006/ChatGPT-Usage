@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT用量统计
 // @namespace    https://github.com/tizee/tampermonkey-chatgpt-model-usage-monitor
-// @version      3.11.1
+// @version      3.11.2
 // @description  优雅的 ChatGPT 模型调用量实时统计，界面简洁清爽（中文版），支持导入导出、一周分析报告、快捷键切换最小化（Ctrl/Cmd+I）
 // @author       tizee (original), schweigen (modified)
 // @match        https://chatgpt.com/*
@@ -306,6 +306,16 @@
         "gpt-5",
         "alpha" // 其他模型占位
     ];
+
+    // UI 显示名覆盖（不影响内部统计键）
+    const MODEL_DISPLAY_NAME_OVERRIDES = {
+        "gpt-5": "gpt-5-instant",
+        "gpt-5-1": "gpt-5-1-instant",
+    };
+
+    function displayModelName(modelKey) {
+        return MODEL_DISPLAY_NAME_OVERRIDES[modelKey] || modelKey;
+    }
 
     // 套餐配置
     // 套餐显示顺序
@@ -2587,7 +2597,7 @@
     function createSettingsModelRow(model, modelKey, row) {
         // Model ID cell
         const keyLabel = document.createElement("div");
-        keyLabel.textContent = modelKey;
+        keyLabel.textContent = displayModelName(modelKey);
         row.appendChild(keyLabel);
 
         // Quota input cell
@@ -2740,7 +2750,7 @@
         modelNameContainer.style.alignItems = "center";
 
         const modelName = document.createElement("span");
-        modelName.textContent = modelKey;
+        modelName.textContent = displayModelName(modelKey);
         let sharedColor = null;
         if (model.sharedGroup) {
             sharedColor = SHARED_GROUP_COLORS[model.sharedGroup] || COLORS.warning;
@@ -3518,9 +3528,9 @@
                             group.windowType === "monthly" ? "30天"   :
                                                        "";
                         const quotaText = group.quota === 0 ? "无限制" : `${group.quota}次`;
-                        return `• ${model}: ${quotaText}/${windowText} (共享)`;
+                        return `• ${displayModelName(model)}: ${quotaText}/${windowText} (共享)`;
                     }
-                    return `• ${model}: 未知配置`;
+                    return `• ${displayModelName(model)}: 未知配置`;
                 } else {
                     // 独立额度模型
                     const windowText =
@@ -3531,7 +3541,7 @@
                         config.windowType === "monthly" ? "30天"   :
                                                        "";
                     const quotaText = config.quota === 0 ? "无限制" : `${config.quota}次`;
-                    return `• ${model}: ${quotaText}/${windowText}`;
+                    return `• ${displayModelName(model)}: ${quotaText}/${windowText}`;
                 }
             }).join('\n') || "当前套餐未包含可用模型";
 
