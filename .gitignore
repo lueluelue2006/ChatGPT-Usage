@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.map
+.npm-cache/
+.DS_Store
